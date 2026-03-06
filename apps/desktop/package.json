@@ -1,0 +1,9 @@
+{
+  "name": "inboxos-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo \"Desktop shell scaffold not wired yet\"",
+    "build": "echo \"Desktop build scaffold not wired yet\""
+  }
+}

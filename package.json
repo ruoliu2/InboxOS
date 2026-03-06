@@ -1,0 +1,21 @@
+{
+  "name": "inboxos",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "apps/desktop",
+    "packages/app",
+    "packages/ui",
+    "packages/features",
+    "packages/lib",
+    "packages/types",
+    "packages/config"
+  ],
+  "scripts": {
+    "web:dev": "cd apps/web && bun run dev",
+    "web:build": "cd apps/web && bun run build",
+    "web:lint": "cd apps/web && bun run lint",
+    "web:clean": "cd apps/web && bun run clean",
+    "desktop:dev": "cd apps/desktop && bun run dev"
+  }
+}

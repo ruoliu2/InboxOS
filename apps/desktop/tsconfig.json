@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@inboxos/app/*": ["../../packages/app/src/*"],
+      "@inboxos/features/*": ["../../packages/features/src/*"],
+      "@inboxos/ui/*": ["../../packages/ui/src/*"],
+      "@inboxos/lib/*": ["../../packages/lib/src/*"],
+      "@inboxos/types": ["../../packages/types/src/index.ts"],
+      "@inboxos/config/*": ["../../packages/config/src/*"]
+    }
+  },
+  "include": [
+    "electron/**/*.ts",
+    "../../packages/**/*.ts",
+    "../../packages/**/*.tsx"
+  ]
+}

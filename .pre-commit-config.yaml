@@ -1,0 +1,34 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-added-large-files
+        exclude: ^docs/screenshots/
+      - id: check-merge-conflict
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.5
+    hooks:
+      - id: ruff
+        name: ruff check api
+        args: [--fix]
+        files: ^apps/api/.*\.py$
+
+  - repo: https://github.com/psf/black
+    rev: 25.12.0
+    hooks:
+      - id: black
+        name: black format api
+        files: ^apps/api/.*\.py$
+
+  - repo: local
+    hooks:
+      - id: prettier-repo
+        name: prettier repo
+        language: node
+        additional_dependencies:
+          - prettier@3.8.1
+        entry: prettier --write
+        files: ^(README\.md|package\.json|apps/(web|desktop)/.*\.(ts|tsx|js|jsx|css|json|md|mjs)|packages/.*\.(ts|tsx|js|jsx|css|json|md|mjs)|docs/.*\.md)$
