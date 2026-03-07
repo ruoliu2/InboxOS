@@ -5,10 +5,12 @@ from datetime import UTC, datetime, timedelta
 from secrets import token_urlsafe
 from urllib.parse import quote
 
+from fastapi import Response
+
 from app.core.config import Settings
 from app.integrations.google_workspace import GoogleWorkspaceClient
 from app.schemas.auth import AuthStartResponse
-from app.storage.store import AuthSessionRecord, InMemoryStore, OAuthStateRecord
+from app.storage.auth_store import AuthSessionRecord, OAuthStateRecord, SQLiteAuthStore
 
 
 @dataclass
@@ -20,7 +22,7 @@ class AuthCallbackResult:
 class AuthService:
     def __init__(
         self,
-        store: InMemoryStore,
+        store: SQLiteAuthStore,
         google_client: GoogleWorkspaceClient,
         settings: Settings,
     ) -> None:
@@ -72,6 +74,7 @@ class AuthService:
             refresh_token=tokens.refresh_token,
             scope=tokens.scope,
             expires_at=tokens.expires_at,
+            session_expires_at=now + self._session_ttl(),
             created_at=now,
             updated_at=now,
         )
@@ -90,7 +93,12 @@ class AuthService:
         if session is None:
             return None
 
-        if self._is_expired(session) and session.refresh_token:
+        now = datetime.now(UTC)
+        if self._is_session_expired(session, now):
+            self.store.delete_session(session.session_id)
+            return None
+
+        if self._is_google_token_expired(session, now) and session.refresh_token:
             try:
                 refreshed = self.google_client.refresh_access_token(
                     session.refresh_token
@@ -99,23 +107,48 @@ class AuthService:
                 self.store.delete_session(session.session_id)
                 return None
 
+            now = datetime.now(UTC)
             session.access_token = refreshed.access_token
             session.refresh_token = refreshed.refresh_token or session.refresh_token
             session.scope = refreshed.scope or session.scope
             session.expires_at = refreshed.expires_at
-            session.updated_at = datetime.now(UTC)
-            self.store.upsert_session(session)
-            return session
-
-        if self._is_expired(session) and not session.refresh_token:
+        elif self._is_google_token_expired(session, now) and not session.refresh_token:
             self.store.delete_session(session.session_id)
             return None
 
+        session.session_expires_at = now + self._session_ttl()
+        session.updated_at = now
+        self.store.upsert_session(session)
         return session
 
     def clear_session(self, session_id: str | None) -> None:
         if session_id:
             self.store.delete_session(session_id)
+
+    def set_session_cookie(
+        self,
+        response: Response,
+        session: AuthSessionRecord,
+    ) -> None:
+        response.set_cookie(
+            key=self.settings.session_cookie_name,
+            value=session.session_id,
+            httponly=True,
+            samesite="lax",
+            secure=self.settings.session_cookie_secure,
+            path="/",
+            max_age=self.settings.session_ttl_seconds,
+            expires=session.session_expires_at,
+        )
+
+    def clear_session_cookie(self, response: Response) -> None:
+        response.delete_cookie(
+            key=self.settings.session_cookie_name,
+            path="/",
+            secure=self.settings.session_cookie_secure,
+            httponly=True,
+            samesite="lax",
+        )
 
     def error_redirect(self, message: str) -> str:
         return self._absolute_redirect(f"/auth?error={quote(message)}")
@@ -128,7 +161,21 @@ class AuthService:
             return "/mail"
         return value
 
-    def _is_expired(self, session: AuthSessionRecord) -> bool:
+    def _is_session_expired(
+        self,
+        session: AuthSessionRecord,
+        now: datetime,
+    ) -> bool:
+        return session.session_expires_at <= now
+
+    def _is_google_token_expired(
+        self,
+        session: AuthSessionRecord,
+        now: datetime,
+    ) -> bool:
         if session.expires_at is None:
             return False
-        return session.expires_at <= datetime.now(UTC) + timedelta(seconds=30)
+        return session.expires_at <= now + timedelta(seconds=30)
+
+    def _session_ttl(self) -> timedelta:
+        return timedelta(seconds=self.settings.session_ttl_seconds)

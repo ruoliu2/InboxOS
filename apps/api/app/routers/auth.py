@@ -26,7 +26,6 @@ def google_callback(
     state: str | None = Query(default=None),
     service: AuthService = Depends(get_auth_service),
 ) -> Response:
-    settings = get_settings()
     try:
         result = service.handle_google_callback(code=code, state=state)
     except ValueError as exc:
@@ -44,27 +43,24 @@ def google_callback(
         url=result.redirect_url,
         status_code=status.HTTP_303_SEE_OTHER,
     )
-    response.set_cookie(
-        key=settings.session_cookie_name,
-        value=result.session.session_id,
-        httponly=True,
-        samesite="lax",
-        secure=settings.session_cookie_secure,
-        path="/",
-    )
+    service.set_session_cookie(response, result.session)
     return response
 
 
 @router.get("/session", response_model=AuthSessionResponse)
 def auth_session(
     request: Request,
+    response: Response,
     service: AuthService = Depends(get_auth_service),
 ) -> AuthSessionResponse:
     settings = get_settings()
     session = service.get_session(request.cookies.get(settings.session_cookie_name))
     if session is None:
+        if request.cookies.get(settings.session_cookie_name):
+            service.clear_session_cookie(response)
         return AuthSessionResponse(authenticated=False)
 
+    service.set_session_cookie(response, session)
     return AuthSessionResponse(
         authenticated=True,
         provider=session.provider,
@@ -79,12 +75,8 @@ def logout(
     request: Request,
     service: AuthService = Depends(get_auth_service),
 ) -> Response:
-    settings = get_settings()
-    session_id = request.cookies.get(settings.session_cookie_name)
+    session_id = request.cookies.get(get_settings().session_cookie_name)
     service.clear_session(session_id)
     response = Response(status_code=status.HTTP_204_NO_CONTENT)
-    response.delete_cookie(
-        key=settings.session_cookie_name,
-        path="/",
-    )
+    service.clear_session_cookie(response)
     return response

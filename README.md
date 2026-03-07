@@ -64,6 +64,8 @@ uv sync --group dev
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+Local auth sessions are now persisted in SQLite at `SESSION_DB_PATH` and survive API reloads and browser restarts until the configured TTL expires. For deployed environments, put `SESSION_DB_PATH` on persistent storage or sessions will still be lost on container or host replacement.
+
 ### Web
 
 ```bash

@@ -3,19 +3,37 @@ from datetime import UTC, datetime
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.config import get_settings
 from app.main import app
 from app.schemas.common import SyncStatus
-from app.services.dependencies import get_gmail_mailbox_cache
+from app.services.dependencies import (
+    get_auth_service,
+    get_auth_store,
+    get_gmail_mailbox_cache,
+    get_google_workspace_client,
+)
 from app.storage.store import get_store
 
 
 @pytest.fixture(autouse=True)
-def reset_store_state() -> None:
+def reset_store_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.setenv(
+        "SESSION_DB_PATH",
+        str(tmp_path / "auth_sessions.sqlite3"),
+    )
+    monkeypatch.setenv(
+        "GMAIL_CACHE_DB_PATH",
+        str(tmp_path / "gmail_mailbox_cache.sqlite3"),
+    )
+    get_settings.cache_clear()
+    get_auth_service.cache_clear()
+    get_auth_store.cache_clear()
+    get_gmail_mailbox_cache.cache_clear()
+    get_google_workspace_client.cache_clear()
+
     store = get_store()
     store.threads = {}
     store.tasks = {}
-    store.oauth_states = {}
-    store.sessions = {}
     store.sync_status = {
         "sync_id": None,
         "status": SyncStatus.IDLE,
@@ -23,7 +41,14 @@ def reset_store_state() -> None:
         "updated_at": datetime.now(UTC),
         "last_error": None,
     }
+    get_auth_store().clear()
     get_gmail_mailbox_cache().clear()
+    yield
+    get_auth_service.cache_clear()
+    get_auth_store.cache_clear()
+    get_gmail_mailbox_cache.cache_clear()
+    get_google_workspace_client.cache_clear()
+    get_settings.cache_clear()
 
 
 @pytest.fixture
