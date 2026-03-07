@@ -1478,15 +1478,14 @@ def test_google_client_returns_mailbox_counts_from_labels(monkeypatch):
     google_client = get_google_workspace_client()
 
     def fake_request(method: str, url: str, **kwargs):
-        if url.endswith("/labels"):
-            return {
-                "labels": [
-                    {"id": "INBOX", "threadsTotal": 1524},
-                    {"id": "SENT", "threadsTotal": 201},
-                    {"id": "TRASH", "threadsTotal": 8},
-                    {"id": "SPAM", "threadsTotal": 2},
-                ]
-            }
+        if url.endswith("/labels/INBOX"):
+            return {"id": "INBOX", "threadsTotal": 1524}
+        if url.endswith("/labels/SENT"):
+            return {"id": "SENT", "threadsTotal": 201}
+        if url.endswith("/labels/TRASH"):
+            return {"id": "TRASH", "threadsTotal": 8}
+        if url.endswith("/labels/SPAM"):
+            return {"id": "SPAM", "threadsTotal": 2}
         raise AssertionError(f"Unexpected request: {method} {url}")
 
     monkeypatch.setattr(google_client, "_request", fake_request)
@@ -1504,13 +1503,14 @@ def test_google_client_returns_null_for_missing_mailbox_label_totals(monkeypatch
     google_client = get_google_workspace_client()
 
     def fake_request(method: str, url: str, **kwargs):
-        if url.endswith("/labels"):
-            return {
-                "labels": [
-                    {"id": "INBOX"},
-                    {"id": "SENT", "threadsTotal": "201"},
-                ]
-            }
+        if url.endswith("/labels/INBOX"):
+            return {"id": "INBOX"}
+        if url.endswith("/labels/SENT"):
+            return {"id": "SENT", "threadsTotal": "201"}
+        if url.endswith("/labels/TRASH"):
+            return {"id": "TRASH"}
+        if url.endswith("/labels/SPAM"):
+            return {"id": "SPAM"}
         raise AssertionError(f"Unexpected request: {method} {url}")
 
     monkeypatch.setattr(google_client, "_request", fake_request)

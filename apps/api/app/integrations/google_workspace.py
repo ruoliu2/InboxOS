@@ -212,13 +212,11 @@ class GoogleWorkspaceClient:
         )
 
     def get_gmail_mailbox_counts(self, access_token: str) -> MailboxCountsResponse:
-        payload = self._request(
-            "GET",
-            f"{GMAIL_API_BASE}/labels",
-            access_token=access_token,
-        )
-        labels = payload.get("labels", [])
-        counts_by_label = self._label_thread_totals(labels)
+        label_ids = ("INBOX", "SENT", "TRASH", "SPAM")
+        counts_by_label = {
+            label_id: self._get_gmail_label_threads_total(access_token, label_id)
+            for label_id in label_ids
+        }
         return MailboxCountsResponse(
             inbox=counts_by_label.get("INBOX"),
             sent=counts_by_label.get("SENT"),
@@ -722,16 +720,15 @@ class GoogleWorkspaceClient:
         except (TypeError, ValueError):
             return None
 
-    def _label_thread_totals(
-        self, labels: list[dict[str, Any]]
-    ) -> dict[str, int | None]:
-        totals: dict[str, int | None] = {}
-        for item in labels:
-            label_id = str(item.get("id") or "").strip()
-            if not label_id:
-                continue
-            totals[label_id] = self._parse_label_threads_total(item)
-        return totals
+    def _get_gmail_label_threads_total(
+        self, access_token: str, label_id: str
+    ) -> int | None:
+        payload = self._request(
+            "GET",
+            f"{GMAIL_API_BASE}/labels/{label_id}",
+            access_token=access_token,
+        )
+        return self._parse_label_threads_total(payload)
 
     def _parse_label_threads_total(self, payload: dict[str, Any]) -> int | None:
         raw_value = payload.get("threadsTotal")
