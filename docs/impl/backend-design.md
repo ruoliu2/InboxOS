@@ -7,7 +7,9 @@ Backend root: `apps/api/`
 - FastAPI app entry: `apps/api/app/main.py`
 - router exports: `apps/api/app/routers/`
 - dependency wiring: `apps/api/app/services/dependencies.py`
-- in-memory state: `apps/api/app/storage/store.py`
+- in-memory task state: `apps/api/app/storage/store.py`
+- persisted auth state: `apps/api/app/storage/auth_store.py`
+- persisted mailbox cache: `apps/api/app/storage/mailbox_cache.py`
 
 ## Active Routes
 
@@ -19,18 +21,18 @@ Backend root: `apps/api/`
 
 - `GET /auth/google/start`
 - `GET /auth/google/callback`
+- `GET /auth/session`
+- `POST /auth/logout`
 
-### Sync
+### Gmail
 
-- `POST /sync/start`
-- `GET /sync/status`
+- `GET /gmail/threads`
+- `GET /gmail/threads/{thread_id}`
+- `POST /gmail/threads/{thread_id}/reply`
 
-### Threads
+### Calendar
 
-- `GET /threads`
-- `GET /threads/{thread_id}`
-- `POST /threads/{thread_id}/analyze`
-- `POST /threads/{thread_id}/reply`
+- `GET /calendar/events`
 
 ### Tasks
 
@@ -40,16 +42,15 @@ Backend root: `apps/api/`
 
 ## Service Boundaries
 
-### `ThreadService`
+### `AuthService`
 
-File: `apps/api/app/services/thread_service.py`
+File: `apps/api/app/services/auth_service.py`
 
 Responsibilities:
 
-- list threads
-- return thread detail
-- analyze a thread through the LLM adapter
-- send direct replies and mutate thread state after reply
+- provide Google auth start and callback behavior
+- restore and refresh persisted sessions
+- clear auth state on logout
 
 ### `TaskService`
 
@@ -60,48 +61,49 @@ Responsibilities:
 - list tasks
 - create tasks directly
 - complete tasks
-- create deadline tasks from analyzed thread data
 
-### `SyncService`
-
-File: `apps/api/app/services/sync_service.py`
-
-Responsibilities:
-
-- call the mail adapter
-- store imported threads
-- analyze each synced thread
-- create tasks derived from deadlines
-- update sync status state
-
-### `AuthService`
-
-File: `apps/api/app/services/auth_service.py`
-
-Responsibilities:
-
-- provide Google auth start and callback behavior for the auth surface
-
-## Integration Boundaries
-
-### Mail Adapter
-
-File: `apps/api/app/integrations/mail/mailcore_adapter.py`
-
-Current behavior:
-
-- returns deterministic stub thread data for local development
-- acts as the inbox source for sync
-
-### LLM Adapter
+### Mail integration layer
 
 Files:
 
-- `apps/api/app/integrations/llm/base.py`
-- `apps/api/app/integrations/llm/openai_compatible.py`
+- `apps/api/app/routers/gmail.py`
+- `apps/api/app/integrations/google_workspace.py`
+- `apps/api/app/storage/mailbox_cache.py`
 
-Current behavior:
+Responsibilities:
 
-- heuristic analysis only
-- extracts summary, requested items, deadlines, and action states
-- no remote LLM call in the MVP stub path
+- list Gmail thread summaries with pagination
+- fetch full Gmail thread detail on demand
+- send Gmail replies
+- read from and write to the persisted mailbox cache
+
+### `GoogleWorkspaceClient`
+
+File: `apps/api/app/integrations/google_workspace.py`
+
+Responsibilities:
+
+- build Google auth URLs
+- exchange and refresh Google OAuth tokens
+- load Gmail thread summaries and full thread detail
+- send Gmail replies
+- load Google Calendar events
+
+## Integration Boundaries
+
+### Google Workspace APIs
+
+Used for:
+
+- Google OAuth sign-in
+- Gmail inbox summary pages
+- Gmail full thread reads
+- Gmail reply send
+- Google Calendar event reads
+
+## Storage Notes
+
+- tasks remain in-memory for the current MVP
+- auth sessions and pending OAuth state are persisted in SQLite
+- Gmail summary pages and opened thread detail are persisted in SQLite
+- the removed legacy demo mail stack no longer exists in app wiring

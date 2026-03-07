@@ -1,11 +1,8 @@
-from datetime import UTC, datetime
-
 import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
 from app.main import app
-from app.schemas.common import SyncStatus
 from app.services.dependencies import (
     get_auth_service,
     get_auth_store,
@@ -32,15 +29,7 @@ def reset_store_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     get_google_workspace_client.cache_clear()
 
     store = get_store()
-    store.threads = {}
     store.tasks = {}
-    store.sync_status = {
-        "sync_id": None,
-        "status": SyncStatus.IDLE,
-        "imported_threads": 0,
-        "updated_at": datetime.now(UTC),
-        "last_error": None,
-    }
     get_auth_store().clear()
     get_gmail_mailbox_cache().clear()
     yield

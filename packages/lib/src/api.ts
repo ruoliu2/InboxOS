@@ -5,11 +5,9 @@ import {
   CalendarEvent,
   CreateTaskRequest,
   ReplyToThreadResponse,
-  SyncStartResponse,
   TaskItem,
   ThreadDetail,
   ThreadSummaryPage,
-  ThreadSummary,
 } from "@inboxos/types";
 
 async function readErrorMessage(response: Response): Promise<string> {
@@ -67,8 +65,6 @@ export const api = {
     ),
   getSession: () => request<AuthSessionResponse>("/auth/session"),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
-  startSync: () =>
-    request<SyncStartResponse>("/sync/start", { method: "POST", body: "{}" }),
   getGmailThreads: (options?: {
     page_token?: string | null;
     page_size?: number;
@@ -104,24 +100,6 @@ export const api = {
     request<CalendarEvent[]>(
       `/calendar/events?time_min=${encodeURIComponent(timeMin)}&time_max=${encodeURIComponent(timeMax)}`,
     ),
-  getThreads: (actionState?: string) =>
-    request<ThreadSummary[]>(
-      actionState
-        ? `/threads?action_state=${encodeURIComponent(actionState)}`
-        : "/threads",
-    ),
-  getThread: (threadId: string) =>
-    request<ThreadDetail>(`/threads/${threadId}`),
-  analyzeThread: (threadId: string) =>
-    request(`/threads/${threadId}/analyze`, { method: "POST" }),
-  replyToThread: (
-    threadId: string,
-    payload: { body: string; mute_thread: boolean },
-  ) =>
-    request<ReplyToThreadResponse>(`/threads/${threadId}/reply`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
   getTasks: () => request<TaskItem[]>("/tasks"),
   createTask: (payload: CreateTaskRequest) =>
     request<TaskItem>("/tasks/create", {

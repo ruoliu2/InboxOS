@@ -27,8 +27,6 @@ class Settings(BaseSettings):
     gmail_cache_db_path: str = str(
         Path.home() / ".cache" / "inboxos" / "gmail_mailbox_cache.sqlite3"
     )
-    openai_api_base: str | None = None
-    openai_api_key: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=(REPO_ROOT / ".env", API_ROOT / ".env"),

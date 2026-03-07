@@ -11,10 +11,3 @@ class ActionState(StrEnum):
 class TaskStatus(StrEnum):
     OPEN = "open"
     COMPLETED = "completed"
-
-
-class SyncStatus(StrEnum):
-    IDLE = "idle"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
