@@ -640,9 +640,23 @@ textarea {
   font-size: 0.76rem;
 }
 
-.message-card p {
+.message-plain-body {
   margin: 0;
   white-space: pre-wrap;
+}
+
+.message-html-preview {
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.message-html-frame {
+  width: 100%;
+  min-height: 72px;
+  display: block;
+  border: 0;
+  background: transparent;
 }
 
 .empty-thread-state {

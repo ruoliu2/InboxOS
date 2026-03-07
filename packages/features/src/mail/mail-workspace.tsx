@@ -27,10 +27,13 @@ import {
   MailboxKey,
   ThreadActionName,
   ThreadDetail,
+  ThreadMessage,
   ThreadSummary,
 } from "@inboxos/types";
 import { ConfirmDialog } from "@inboxos/ui/confirm-dialog";
 import { OverflowMenu } from "@inboxos/ui/overflow-menu";
+
+import { EmailHtmlPreview } from "./email-html-preview";
 
 type ListTab = "all" | "unread";
 
@@ -185,6 +188,10 @@ function parseRecipients(value: string): string[] {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function hasHtmlPreview(message: ThreadMessage): boolean {
+  return Boolean(message.body_html?.trim());
 }
 
 export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
@@ -876,7 +883,13 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
                       <strong>{message.sender}</strong>
                       <time>{formatDate(message.sent_at)}</time>
                     </header>
-                    <p>{message.body || "No preview available."}</p>
+                    {hasHtmlPreview(message) ? (
+                      <EmailHtmlPreview message={message} />
+                    ) : (
+                      <div className="message-plain-body">
+                        {message.body || "No preview available."}
+                      </div>
+                    )}
                   </article>
                 ))}
               </div>

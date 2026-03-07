@@ -22,6 +22,7 @@ from app.schemas.thread import (
     ComposeThreadRequest,
     MailboxKey,
     ThreadDetail,
+    ThreadInlineAsset,
     ThreadMessage,
     ThreadSummary,
     ThreadSummaryPage,
@@ -60,6 +61,13 @@ class GoogleUserProfile:
     email: str
     name: str | None
     picture: str | None
+
+
+@dataclass
+class ExtractedMessageContent:
+    body: str
+    body_html: str | None
+    inline_assets: list[ThreadInlineAsset]
 
 
 @dataclass
@@ -212,7 +220,7 @@ class GoogleWorkspaceClient:
 
     def get_gmail_thread(self, access_token: str, thread_id: str) -> ThreadDetail:
         payload = self._get_gmail_thread_payload(access_token, thread_id)
-        return self._parse_thread(payload)
+        return self._parse_thread(access_token, payload)
 
     def compose_gmail_thread(
         self,
@@ -263,7 +271,10 @@ class GoogleWorkspaceClient:
             cc_recipients = payload.cc
             subject = self._prefix_subject(headers.get("subject"), "Fwd:")
             message_body = self._build_forward_body(
-                payload.body, headers, latest_message
+                access_token,
+                payload.body,
+                headers,
+                latest_message,
             )
 
         if not recipients:
@@ -337,7 +348,7 @@ class GoogleWorkspaceClient:
             )
             return GmailThreadActionResult(
                 thread_id=thread_id,
-                thread=self._parse_thread(payload),
+                thread=self._parse_thread(access_token, payload),
             )
 
         if action == "junk":
@@ -349,7 +360,7 @@ class GoogleWorkspaceClient:
             )
             return GmailThreadActionResult(
                 thread_id=thread_id,
-                thread=self._parse_thread(payload),
+                thread=self._parse_thread(access_token, payload),
             )
 
         if action == "trash":
@@ -360,7 +371,7 @@ class GoogleWorkspaceClient:
             )
             return GmailThreadActionResult(
                 thread_id=thread_id,
-                thread=self._parse_thread(payload),
+                thread=self._parse_thread(access_token, payload),
             )
 
         if action == "restore":
@@ -385,7 +396,7 @@ class GoogleWorkspaceClient:
             if restored_payload is not None:
                 return GmailThreadActionResult(
                     thread_id=thread_id,
-                    thread=self._parse_thread(restored_payload),
+                    thread=self._parse_thread(access_token, restored_payload),
                 )
 
             return GmailThreadActionResult(
@@ -500,6 +511,18 @@ class GoogleWorkspaceClient:
             params={"format": "metadata"},
         )
 
+    def _get_gmail_attachment_payload(
+        self,
+        access_token: str,
+        message_id: str,
+        attachment_id: str,
+    ) -> dict[str, Any]:
+        return self._request(
+            "GET",
+            f"{GMAIL_API_BASE}/messages/{message_id}/attachments/{attachment_id}",
+            access_token=access_token,
+        )
+
     def _request(
         self,
         method: str,
@@ -562,9 +585,9 @@ class GoogleWorkspaceClient:
             expires_at=expires_at,
         )
 
-    def _parse_thread(self, payload: dict[str, Any]) -> ThreadDetail:
+    def _parse_thread(self, access_token: str, payload: dict[str, Any]) -> ThreadDetail:
         raw_messages = payload.get("messages", [])
-        messages = [self._parse_message(item) for item in raw_messages]
+        messages = [self._parse_message(access_token, item) for item in raw_messages]
         messages.sort(key=lambda item: item.sent_at)
 
         participants = self._collect_participants(raw_messages)
@@ -601,10 +624,18 @@ class GoogleWorkspaceClient:
             action_states=[ActionState.TO_REPLY] if unread else [ActionState.FYI],
         )
 
-    def _parse_message(self, payload: dict[str, Any]) -> ThreadMessage:
+    def _parse_message(
+        self, access_token: str, payload: dict[str, Any]
+    ) -> ThreadMessage:
         headers = self._headers_map(payload.get("payload", {}).get("headers", []))
         sender = headers.get("from") or "unknown@example.com"
-        body = self._extract_message_body(payload.get("payload", {}))
+        message_id = str(payload.get("id") or "")
+        content = self._extract_message_content(
+            access_token,
+            message_id,
+            payload.get("payload", {}),
+        )
+        body = content.body
         if not body:
             body = str(payload.get("snippet") or "").strip()
 
@@ -613,10 +644,12 @@ class GoogleWorkspaceClient:
             sent_at = datetime.now(UTC)
 
         return ThreadMessage(
-            id=str(payload.get("id") or ""),
+            id=message_id,
             sender=sender,
             sent_at=sent_at,
             body=body,
+            body_html=content.body_html,
+            inline_assets=content.inline_assets,
         )
 
     def _parse_calendar_event(self, payload: dict[str, Any]) -> CalendarEvent:
@@ -805,11 +838,12 @@ class GoogleWorkspaceClient:
 
     def _build_forward_body(
         self,
+        access_token: str,
         body: str,
         headers: dict[str, str],
         latest_message: dict[str, Any],
     ) -> str:
-        original_message = self._parse_message(latest_message)
+        original_message = self._parse_message(access_token, latest_message)
         fragments = []
         if body.strip():
             fragments.append(body.strip())
@@ -846,6 +880,36 @@ class GoogleWorkspaceClient:
             return datetime.now(UTC)
         return max(timestamps)
 
+    def _extract_message_content(
+        self,
+        access_token: str,
+        message_id: str,
+        payload: dict[str, Any],
+    ) -> ExtractedMessageContent:
+        plain = self._find_body_part(payload, "text/plain")
+        html = self._find_body_part(payload, "text/html")
+        inline_assets = self._collect_inline_assets(access_token, message_id, payload)
+
+        if plain:
+            return ExtractedMessageContent(
+                body=plain,
+                body_html=html or None,
+                inline_assets=inline_assets,
+            )
+
+        if html:
+            return ExtractedMessageContent(
+                body=self._html_to_text(html),
+                body_html=html,
+                inline_assets=inline_assets,
+            )
+
+        return ExtractedMessageContent(
+            body="",
+            body_html=None,
+            inline_assets=[],
+        )
+
     def _extract_message_body(self, payload: dict[str, Any]) -> str:
         plain = self._find_body_part(payload, "text/plain")
         if plain:
@@ -853,35 +917,137 @@ class GoogleWorkspaceClient:
 
         html = self._find_body_part(payload, "text/html")
         if html:
-            text = re.sub(r"<br\s*/?>", "\n", html, flags=re.IGNORECASE)
-            text = re.sub(r"</(p|div|li|tr|h[1-6])>", "\n", text, flags=re.IGNORECASE)
-            text = re.sub(r"<[^>]+>", "", text)
-            text = unescape(text)
-            text = re.sub(r"\n{3,}", "\n\n", text)
-            return text.strip()
+            return self._html_to_text(html)
 
         return ""
 
     def _find_body_part(self, payload: dict[str, Any], mime_type: str) -> str:
-        current_mime = str(payload.get("mimeType") or "")
-        if current_mime == mime_type:
-            encoded = str(payload.get("body", {}).get("data") or "")
+        for part in self._iter_message_parts(payload):
+            current_mime = str(part.get("mimeType") or "")
+            if current_mime != mime_type:
+                continue
+
+            encoded = str(part.get("body", {}).get("data") or "")
             decoded = self._decode_base64url(encoded)
             if decoded:
                 return decoded.strip()
 
-        for part in payload.get("parts", []) or []:
-            found = self._find_body_part(part, mime_type)
-            if found:
-                return found
-
         return ""
+
+    def _collect_inline_assets(
+        self,
+        access_token: str,
+        message_id: str,
+        payload: dict[str, Any],
+    ) -> list[ThreadInlineAsset]:
+        assets: list[ThreadInlineAsset] = []
+        seen: set[str] = set()
+
+        for part in self._iter_message_parts(payload):
+            headers = self._headers_map(part.get("headers", []))
+            content_id = self._normalize_content_id(headers.get("content-id"))
+            if not content_id or content_id in seen:
+                continue
+
+            mime_type = str(part.get("mimeType") or "").strip()
+            if not mime_type:
+                continue
+
+            body = part.get("body", {})
+            if not isinstance(body, dict):
+                continue
+
+            data = self._read_part_bytes(
+                access_token,
+                message_id,
+                body,
+            )
+            if not data:
+                continue
+
+            seen.add(content_id)
+            assets.append(
+                ThreadInlineAsset(
+                    content_id=content_id,
+                    mime_type=mime_type,
+                    data_url=self._build_data_url(mime_type, data),
+                )
+            )
+
+        return assets
+
+    def _iter_message_parts(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
+        parts: list[dict[str, Any]] = []
+        stack: list[dict[str, Any]] = [payload]
+
+        while stack:
+            part = stack.pop()
+            parts.append(part)
+
+            children = part.get("parts", []) or []
+            if not isinstance(children, list):
+                continue
+
+            for child in reversed(children):
+                if isinstance(child, dict):
+                    stack.append(child)
+
+        return parts
+
+    def _read_part_bytes(
+        self,
+        access_token: str,
+        message_id: str,
+        body: dict[str, Any],
+    ) -> bytes:
+        encoded = str(body.get("data") or "")
+        if encoded:
+            return self._decode_base64url_bytes(encoded)
+
+        attachment_id = str(body.get("attachmentId") or "").strip()
+        if not attachment_id:
+            return b""
+
+        try:
+            attachment = self._get_gmail_attachment_payload(
+                access_token,
+                message_id,
+                attachment_id,
+            )
+        except (GoogleAPIError, RuntimeError):
+            return b""
+        return self._decode_base64url_bytes(str(attachment.get("data") or ""))
+
+    def _build_data_url(self, mime_type: str, data: bytes) -> str:
+        encoded = base64.b64encode(data).decode("ascii")
+        return f"data:{mime_type};base64,{encoded}"
+
+    def _normalize_content_id(self, value: str | None) -> str | None:
+        normalized = (value or "").strip().lower()
+        if not normalized:
+            return None
+        if normalized.startswith("<") and normalized.endswith(">"):
+            normalized = normalized[1:-1].strip()
+        return normalized or None
+
+    def _html_to_text(self, html: str) -> str:
+        text = re.sub(r"<br\s*/?>", "\n", html, flags=re.IGNORECASE)
+        text = re.sub(r"</(p|div|li|tr|h[1-6])>", "\n", text, flags=re.IGNORECASE)
+        text = re.sub(r"<[^>]+>", "", text)
+        text = unescape(text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip()
+
+    def _decode_base64url_bytes(self, value: str) -> bytes:
+        if not value:
+            return b""
+        padded = value + "=" * (-len(value) % 4)
+        return base64.urlsafe_b64decode(padded.encode("utf-8"))
 
     def _decode_base64url(self, value: str) -> str:
         if not value:
             return ""
-        padded = value + "=" * (-len(value) % 4)
-        decoded = base64.urlsafe_b64decode(padded.encode("utf-8"))
+        decoded = self._decode_base64url_bytes(value)
         return decoded.decode("utf-8", errors="replace")
 
     def _parse_gmail_datetime(self, value: Any) -> datetime | None:
@@ -938,7 +1104,11 @@ class GoogleWorkspaceClient:
         if not payload:
             return None
 
-        details = payload.get("error", {}).get("details", [])
+        error = payload.get("error")
+        if not isinstance(error, dict):
+            return None
+
+        details = error.get("details", [])
         if not isinstance(details, list):
             return None
 

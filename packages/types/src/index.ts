@@ -25,11 +25,19 @@ export type ThreadSummaryPage = {
   total_count: number | null;
 };
 
+export type ThreadInlineAsset = {
+  content_id: string;
+  mime_type: string;
+  data_url: string;
+};
+
 export type ThreadMessage = {
   id: string;
   sender: string;
   sent_at: string;
   body: string;
+  body_html: string | null;
+  inline_assets: ThreadInlineAsset[];
 };
 
 export type ThreadAnalysis = {
