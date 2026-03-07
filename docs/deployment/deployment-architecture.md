@@ -5,7 +5,7 @@ This document captures the intended deployment shape for the current MVP.
 ## Release Branch
 
 - deploy branch: `codex/deploy-vercel-railway`
-- deploy worktree: `/Users/ruo/Downloads/startup/InboxOS-deploy`
+- deploy worktree: a sibling directory to the main repo checkout
 - update flow: fetch `origin/main`, merge it into `codex/deploy-vercel-railway` from the deploy worktree, then push
 
 ## Hosting Plan

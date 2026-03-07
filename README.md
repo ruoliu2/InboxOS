@@ -119,7 +119,7 @@ docker compose up --build
 
 ## Deploy
 
-Production deploys run from the dedicated branch `codex/deploy-vercel-railway`, which is checked out in the sibling worktree `/Users/ruo/Downloads/startup/InboxOS-deploy`. Update that branch by merging `origin/main` into it from the deploy worktree, then push the merge commit.
+Production deploys run from the dedicated branch `codex/deploy-vercel-railway`, which is checked out in a sibling worktree. Update that branch by merging `origin/main` into it from the deploy worktree, then push the merge commit.
 
 ### Web on Vercel
 

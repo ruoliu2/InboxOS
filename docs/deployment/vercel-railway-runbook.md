@@ -5,7 +5,7 @@ This runbook defines the production deployment flow for the current MVP.
 ## Release Branch
 
 - deploy branch: `codex/deploy-vercel-railway`
-- deploy worktree: `/Users/ruo/Downloads/startup/InboxOS-deploy`
+- deploy worktree: `../InboxOS-deploy`
 - create once:
 
 ```bash
@@ -18,7 +18,7 @@ git push -u origin codex/deploy-vercel-railway
 - update for each release:
 
 ```bash
-cd /Users/ruo/Downloads/startup/InboxOS-deploy
+cd ../InboxOS-deploy
 git fetch origin main
 git merge --no-ff origin/main
 git push
