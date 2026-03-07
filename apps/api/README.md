@@ -47,3 +47,6 @@ Primary live routes:
 - `/tasks`
 - `/tasks/create`
 - `/tasks/{task_id}/complete`
+
+The `/gmail/*` routes are provider-specific today because Gmail is the first
+shipped mail integration. Higher-level product docs stay provider-agnostic.

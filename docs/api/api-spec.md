@@ -84,6 +84,8 @@ Returns `204 No Content`.
 The current live mail surface is provider-specific and uses `/gmail/*`.
 This is the first shipped mail integration. Higher-level product docs stay
 provider-agnostic, but the concrete API contract is Gmail-backed today.
+Broader mail provider support may add additional adapters or route surfaces
+later.
 
 ### `GET /gmail/threads`
 

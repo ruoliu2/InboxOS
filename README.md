@@ -81,11 +81,11 @@ Open [http://localhost:3000/mail](http://localhost:3000/mail).
 
 ## Mail Workspace Behavior
 
-- first mailbox paint loads the newest 20 thread summaries
-- full thread detail loads only when a thread is opened or deep-linked
+- first mailbox paint loads the newest 20 Gmail inbox thread summaries
+- full Gmail thread detail loads only when a thread is opened or deep-linked
 - scrolling near the bottom loads older inbox pages
 - search currently filters only the summaries already loaded in the client
-- the current live mail integration uses Gmail, and the backend persists summary pages and opened thread detail in `GMAIL_CACHE_DB_PATH`
+- the current live mail integration uses Gmail, and the backend persists summary pages and opened thread detail in `GMAIL_CACHE_DB_PATH`, which defaults to `~/.cache/inboxos/gmail_mailbox_cache.sqlite3`
 
 ### Desktop
 
@@ -161,8 +161,8 @@ Implemented:
 
 - mail-first shared UI structure for web and future desktop shell reuse
 - Google-backed auth start, callback, session, and logout flow with an HTTP-only session cookie
-- the live mail integration currently uses Gmail with summary-first inbox loading and a persisted first-page cache
-- full thread fetch on open plus direct reply from the mail workspace
+- Gmail inbox list backed by live Google data with summary-first loading and a persisted first-page cache
+- full Gmail thread fetch on open plus live mailbox actions from the mail workspace
 - infinite scroll for older inbox pages
 - Google Calendar event loading in the calendar workspace
 - mail, tasks, calendar, and auth surfaces in the web host app
