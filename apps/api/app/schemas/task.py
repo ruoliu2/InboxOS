@@ -8,6 +8,8 @@ from app.schemas.common import TaskStatus
 class CreateTaskRequest(BaseModel):
     title: str
     due_at: datetime | None = None
+    conversation_id: str | None = None
+    linked_account_id: str | None = None
     thread_id: str | None = None
     category: str | None = None
 
@@ -17,6 +19,8 @@ class TaskItem(BaseModel):
     title: str
     status: TaskStatus
     due_at: datetime | None = None
+    linked_account_id: str | None = None
+    conversation_id: str | None = None
     thread_id: str | None = None
     category: str | None = None
     created_at: datetime

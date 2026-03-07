@@ -5,6 +5,7 @@ description = "InboxOS MVP FastAPI service"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "cryptography>=45.0.7,<46.0.0",
   "fastapi>=0.116.1,<1.0.0",
   "httpx>=0.28.1,<1.0.0",
   "pydantic-settings>=2.6.1,<3.0.0",

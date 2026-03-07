@@ -34,10 +34,23 @@ Expected settings:
 - service root: `apps/api`
 - port: `8000`
 - deploy with `apps/api/Dockerfile`
-- attach a persistent volume at `/data`
-- set `SESSION_DB_PATH=/data/auth_sessions.sqlite3`
+- set `DATABASE_URL` to the Supabase production Postgres connection string
+- set `CREDENTIAL_ENCRYPTION_KEY` for provider token encryption
+- attach a persistent volume at `/data` only if Gmail cache should survive restarts
 - env vars from `.env.example` plus production overrides for cookie security, allowed origins, and OAuth callback URLs
 - public networking enabled with a Railway-provided domain
+
+### Database
+
+Platform: Supabase
+
+Expected settings:
+
+- one production Supabase project
+- use Supabase local Docker through the CLI for local development
+- use `docker compose up --build` only for local all-in-one startup
+- keep schema migrations in `supabase/migrations`
+- Railway is the only deployed service that receives the Supabase database connection string
 
 ### Desktop
 
@@ -53,6 +66,8 @@ Current expectation:
 ### Backend
 
 ```bash
+supabase start
+
 cd apps/api
 uv sync --group dev
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -72,10 +87,12 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 bun run dev
 docker compose up --build
 ```
 
+`docker-compose.yml` is local-only. It starts the web app, API, and a Compose-managed Postgres instance seeded from `supabase/migrations`. It does not affect Railway or Vercel deployment settings.
+
 ## Constraints
 
-- thread and task state are still in-memory
-- auth sessions persist in SQLite and require persistent storage in production
+- auth, tasks, linked accounts, and conversation state persist in Supabase
+- Gmail cache is still optional local disk state
 - calendar has no backend service yet
 - auth is not enforced app-wide yet
 - future macOS packaging comes after the shared web surface is stable

@@ -1,12 +1,50 @@
 services:
+  db:
+    image: postgres:17
+    ports:
+      - "54322:5432"
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  db-init:
+    image: postgres:17
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./supabase:/workspace/supabase:ro
+      - ./docker/postgres-init:/workspace/postgres-init:ro
+    command: ["/bin/sh", "/workspace/postgres-init/apply-sql.sh"]
+
   api:
     build:
       context: ./apps/api
     ports:
       - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     environment:
       APP_ENV: dev
       CORS_ORIGINS: http://localhost:3000
+      WEB_BASE_URL: http://localhost:3000
+      SESSION_COOKIE_SECURE: "false"
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:-postgresql://postgres@db:5432/postgres}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:8000/auth/google/callback}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-local-dev-only-change-me}
     healthcheck:
       test:
         [
@@ -27,6 +65,10 @@ services:
       - "3000:3000"
     environment:
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      NEXT_PUBLIC_SESSION_COOKIE_NAME: inboxos_session
     depends_on:
       api:
         condition: service_healthy
+
+volumes:
+  db-data:
