@@ -4,6 +4,7 @@ from app.integrations.google_workspace import GoogleAPIError, GoogleWorkspaceCli
 from app.schemas.thread import (
     ComposeThreadRequest,
     ComposeThreadResponse,
+    MailboxCountsResponse,
     MailboxKey,
     ReplyToThreadRequest,
     ReplyToThreadResponse,
@@ -112,6 +113,19 @@ def list_gmail_threads(
         page_key=page_token,
     )
     return page
+
+
+@router.get("/mailbox-counts", response_model=MailboxCountsResponse)
+def get_gmail_mailbox_counts(
+    session: AuthSessionRecord = Depends(get_current_auth_session),
+    client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
+) -> MailboxCountsResponse:
+    try:
+        return client.get_gmail_mailbox_counts(session.access_token)
+    except GoogleAPIError as exc:
+        raise HTTPException(status_code=exc.app_status_code, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.get("/threads/{thread_id}", response_model=ThreadDetail)

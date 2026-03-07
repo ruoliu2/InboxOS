@@ -37,6 +37,14 @@ class ThreadSummaryPage(BaseModel):
     total_count: int | None = None
 
 
+class MailboxCountsResponse(BaseModel):
+    inbox: int | None = None
+    sent: int | None = None
+    archive: int | None = None
+    trash: int | None = None
+    junk: int | None = None
+
+
 class MailboxKey(StrEnum):
     INBOX = "inbox"
     SENT = "sent"

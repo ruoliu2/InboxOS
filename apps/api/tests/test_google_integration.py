@@ -596,6 +596,37 @@ def test_gmail_route_returns_cached_empty_first_page_with_total_count(
     assert response.json()["total_count"] == 0
 
 
+def test_gmail_mailbox_counts_route_returns_label_totals(client, monkeypatch):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+
+    google_client = get_google_workspace_client()
+    monkeypatch.setattr(
+        google_client,
+        "get_gmail_mailbox_counts",
+        lambda access_token: {
+            "inbox": 1524,
+            "sent": 201,
+            "archive": None,
+            "trash": 8,
+            "junk": 2,
+        },
+    )
+
+    response = client.get("/gmail/mailbox-counts")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "inbox": 1524,
+        "sent": 201,
+        "archive": None,
+        "trash": 8,
+        "junk": 2,
+    }
+
+
 def test_gmail_route_forwards_pagination_options(client, monkeypatch):
     auth_store = get_auth_store()
     session = build_session()
@@ -1441,6 +1472,56 @@ def test_google_client_returns_total_count_for_empty_thread_page(monkeypatch):
     assert page.has_more is False
     assert page.next_page_token is None
     assert page.total_count == 0
+
+
+def test_google_client_returns_mailbox_counts_from_labels(monkeypatch):
+    google_client = get_google_workspace_client()
+
+    def fake_request(method: str, url: str, **kwargs):
+        if url.endswith("/labels"):
+            return {
+                "labels": [
+                    {"id": "INBOX", "threadsTotal": 1524},
+                    {"id": "SENT", "threadsTotal": 201},
+                    {"id": "TRASH", "threadsTotal": 8},
+                    {"id": "SPAM", "threadsTotal": 2},
+                ]
+            }
+        raise AssertionError(f"Unexpected request: {method} {url}")
+
+    monkeypatch.setattr(google_client, "_request", fake_request)
+
+    counts = google_client.get_gmail_mailbox_counts("access-token")
+
+    assert counts.inbox == 1524
+    assert counts.sent == 201
+    assert counts.archive is None
+    assert counts.trash == 8
+    assert counts.junk == 2
+
+
+def test_google_client_returns_null_for_missing_mailbox_label_totals(monkeypatch):
+    google_client = get_google_workspace_client()
+
+    def fake_request(method: str, url: str, **kwargs):
+        if url.endswith("/labels"):
+            return {
+                "labels": [
+                    {"id": "INBOX"},
+                    {"id": "SENT", "threadsTotal": "201"},
+                ]
+            }
+        raise AssertionError(f"Unexpected request: {method} {url}")
+
+    monkeypatch.setattr(google_client, "_request", fake_request)
+
+    counts = google_client.get_gmail_mailbox_counts("access-token")
+
+    assert counts.inbox is None
+    assert counts.sent == 201
+    assert counts.archive is None
+    assert counts.trash is None
+    assert counts.junk is None
 
 
 def test_google_client_extracts_html_body_breaks():

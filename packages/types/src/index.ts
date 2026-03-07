@@ -25,6 +25,14 @@ export type ThreadSummaryPage = {
   total_count: number | null;
 };
 
+export type MailboxCounts = {
+  inbox: number | null;
+  sent: number | null;
+  archive: number | null;
+  trash: number | null;
+  junk: number | null;
+};
+
 export type ThreadInlineAsset = {
   content_id: string;
   mime_type: string;

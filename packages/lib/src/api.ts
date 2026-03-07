@@ -7,6 +7,7 @@ import {
   ComposeThreadResponse,
   CreateCalendarEventRequest,
   CreateTaskRequest,
+  MailboxCounts,
   ReplyToThreadResponse,
   TaskItem,
   ThreadActionName,
@@ -71,6 +72,7 @@ export const api = {
     ),
   getSession: () => request<AuthSessionResponse>("/auth/session"),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
+  getGmailMailboxCounts: () => request<MailboxCounts>("/gmail/mailbox-counts"),
   getGmailThreads: (options?: {
     page_token?: string | null;
     page_size?: number;
