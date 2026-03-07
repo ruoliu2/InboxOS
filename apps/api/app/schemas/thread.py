@@ -5,11 +5,19 @@ from pydantic import BaseModel, Field, field_validator
 from app.schemas.common import ActionState
 
 
+class ThreadInlineAsset(BaseModel):
+    content_id: str
+    mime_type: str
+    data_url: str
+
+
 class ThreadMessage(BaseModel):
     id: str
     sender: str
     sent_at: datetime
     body: str
+    body_html: str | None = None
+    inline_assets: list[ThreadInlineAsset] = Field(default_factory=list)
 
 
 class ThreadSummary(BaseModel):

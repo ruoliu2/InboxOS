@@ -11,6 +11,7 @@ from app.schemas.calendar import CalendarEvent
 from app.schemas.common import ActionState
 from app.schemas.thread import (
     ThreadDetail,
+    ThreadInlineAsset,
     ThreadMessage,
     ThreadSummary,
     ThreadSummaryPage,
@@ -612,6 +613,140 @@ def test_google_client_converts_html_breaks_to_newlines():
     assert body == "Line one\nLine two\nLine three\nLine four"
 
 
+def test_google_client_prefers_plain_text_body_and_preserves_html():
+    google_client = get_google_workspace_client()
+    plain = "Plain launch update"
+    html = "<div><strong>Styled</strong> launch update</div>"
+
+    message = google_client._parse_message(
+        "access-token",
+        {
+            "id": "message-plain-html",
+            "internalDate": str(int(datetime.now(UTC).timestamp() * 1000)),
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": "Founder <founder@example.com>"},
+                ],
+                "mimeType": "multipart/alternative",
+                "parts": [
+                    {
+                        "mimeType": "text/plain",
+                        "body": {
+                            "data": base64.urlsafe_b64encode(
+                                plain.encode("utf-8")
+                            ).decode("utf-8")
+                        },
+                    },
+                    {
+                        "mimeType": "text/html",
+                        "body": {
+                            "data": base64.urlsafe_b64encode(
+                                html.encode("utf-8")
+                            ).decode("utf-8")
+                        },
+                    },
+                ],
+            },
+        },
+    )
+
+    assert message.body == plain
+    assert message.body_html == html
+    assert message.inline_assets == []
+
+
+def test_google_client_derives_plain_body_from_html_only_message():
+    google_client = get_google_workspace_client()
+    html = "<div>Hello<br><strong>team</strong></div>"
+
+    message = google_client._parse_message(
+        "access-token",
+        {
+            "id": "message-html-only",
+            "internalDate": str(int(datetime.now(UTC).timestamp() * 1000)),
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": "Founder <founder@example.com>"},
+                ],
+                "mimeType": "multipart/alternative",
+                "parts": [
+                    {
+                        "mimeType": "text/html",
+                        "body": {
+                            "data": base64.urlsafe_b64encode(
+                                html.encode("utf-8")
+                            ).decode("utf-8")
+                        },
+                    }
+                ],
+            },
+        },
+    )
+
+    assert message.body == "Hello\nteam"
+    assert message.body_html == html
+    assert message.inline_assets == []
+
+
+def test_google_client_collects_cid_inline_assets_from_attachment_parts(monkeypatch):
+    google_client = get_google_workspace_client()
+    html = '<div><img src="cid:hero.png" alt="Hero"></div>'
+    png_bytes = b"\x89PNG\r\n\x1a\n"
+    encoded_attachment = base64.urlsafe_b64encode(png_bytes).decode("utf-8")
+
+    def fake_request(method: str, url: str, **kwargs):
+        if url.endswith("/messages/message-inline/attachments/att-inline"):
+            return {"data": encoded_attachment}
+        raise AssertionError(f"Unexpected request: {method} {url}")
+
+    monkeypatch.setattr(google_client, "_request", fake_request)
+
+    message = google_client._parse_message(
+        "access-token",
+        {
+            "id": "message-inline",
+            "internalDate": str(int(datetime.now(UTC).timestamp() * 1000)),
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": "Founder <founder@example.com>"},
+                ],
+                "mimeType": "multipart/related",
+                "parts": [
+                    {
+                        "mimeType": "text/html",
+                        "body": {
+                            "data": base64.urlsafe_b64encode(
+                                html.encode("utf-8")
+                            ).decode("utf-8")
+                        },
+                    },
+                    {
+                        "mimeType": "image/png",
+                        "headers": [
+                            {"name": "Content-ID", "value": "<hero.png>"},
+                        ],
+                        "body": {
+                            "attachmentId": "att-inline",
+                        },
+                    },
+                ],
+            },
+        },
+    )
+
+    assert message.body_html == html
+    assert message.inline_assets == [
+        ThreadInlineAsset(
+            content_id="hero.png",
+            mime_type="image/png",
+            data_url=(
+                "data:image/png;base64,"
+                f"{base64.b64encode(png_bytes).decode('ascii')}"
+            ),
+        )
+    ]
+
+
 def test_calendar_route_preserves_explicit_time_window(client, monkeypatch):
     auth_store = get_auth_store()
     session = build_session()
@@ -722,6 +857,14 @@ def test_opening_gmail_thread_updates_detail_cache(client, monkeypatch):
                 sender="founder@gmail.com",
                 sent_at=datetime.now(UTC),
                 body="Detail payload",
+                body_html='<div><p>Detail payload</p><img src="cid:hero.png"></div>',
+                inline_assets=[
+                    ThreadInlineAsset(
+                        content_id="hero.png",
+                        mime_type="image/png",
+                        data_url="data:image/png;base64,AAAA",
+                    )
+                ],
             )
         ],
         analysis=None,
@@ -733,9 +876,21 @@ def test_opening_gmail_thread_updates_detail_cache(client, monkeypatch):
     response = client.get("/gmail/threads/gmail-thread-2")
 
     assert response.status_code == 200
+    payload = response.json()
+    assert payload["messages"][0]["body_html"] == (
+        '<div><p>Detail payload</p><img src="cid:hero.png"></div>'
+    )
+    assert payload["messages"][0]["inline_assets"] == [
+        {
+            "content_id": "hero.png",
+            "mime_type": "image/png",
+            "data_url": "data:image/png;base64,AAAA",
+        }
+    ]
     cached_thread = get_gmail_mailbox_cache().get_thread_detail(
         session.account_email,
         "gmail-thread-2",
     )
     assert cached_thread is not None
     assert cached_thread.id == "gmail-thread-2"
+    assert cached_thread.messages[0].body_html == payload["messages"][0]["body_html"]

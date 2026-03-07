@@ -24,8 +24,11 @@ import { formatDate } from "@inboxos/lib/format";
 import {
   AuthSessionResponse,
   ThreadDetail,
+  ThreadMessage,
   ThreadSummary,
 } from "@inboxos/types";
+
+import { EmailHtmlPreview } from "./email-html-preview";
 
 type ListTab = "all" | "unread";
 
@@ -156,6 +159,10 @@ function mergeThreadSummaries(
     ...current.map((thread) => incomingById.get(thread.id) ?? thread),
     ...incoming.filter((thread) => !existingIds.has(thread.id)),
   ];
+}
+
+function hasHtmlPreview(message: ThreadMessage): boolean {
+  return Boolean(message.body_html?.trim());
 }
 
 export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
@@ -627,7 +634,13 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
                     <strong>{message.sender}</strong>
                     <time>{formatDate(message.sent_at)}</time>
                   </header>
-                  <p>{message.body || "No preview available."}</p>
+                  {hasHtmlPreview(message) ? (
+                    <EmailHtmlPreview message={message} />
+                  ) : (
+                    <div className="message-plain-body">
+                      {message.body || "No preview available."}
+                    </div>
+                  )}
                 </article>
               ))}
             </div>
