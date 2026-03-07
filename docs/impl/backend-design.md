@@ -8,7 +8,7 @@ Backend root: `apps/api/`
 - router exports: `apps/api/app/routers/`
 - dependency wiring: `apps/api/app/services/dependencies.py`
 - in-memory state for sessions, tasks, legacy threads, and sync: `apps/api/app/storage/store.py`
-- persisted cache for the current Gmail provider: `apps/api/app/storage/mailbox_cache.py`
+- persisted mail cache for the current implementation: `apps/api/app/storage/mailbox_cache.py`
 
 ## Active Routes
 
@@ -93,7 +93,7 @@ File: `apps/api/app/services/auth_service.py`
 
 Responsibilities:
 
-- provide Google auth start and callback behavior for the auth surface
+- provide the current OAuth start and callback behavior for the auth surface
 - store and refresh authenticated sessions behind the session cookie
 - expose current session state and logout behavior
 
@@ -107,8 +107,8 @@ Files:
 Responsibilities:
 
 - expose the current live mailbox routes
-- keep the backend mail path ready for additional providers later
-- keep provider-specific concerns behind the live mail route surface
+- isolate provider-specific mailbox concerns behind the live mail route surface
+- coordinate summary-first inbox loading, thread detail fetches, and replies
 
 ### `GoogleWorkspaceClient`
 
@@ -116,7 +116,7 @@ File: `apps/api/app/integrations/google_workspace.py`
 
 Responsibilities:
 
-- act as the current concrete Gmail provider behind the mail integration layer
+- act as the current concrete implementation behind the live mail route surface
 - build Google OAuth URLs and exchange auth codes for tokens
 - refresh expired Google access tokens when a refresh token is available
 - list Gmail inbox thread summaries with pagination
@@ -124,14 +124,16 @@ Responsibilities:
 - fetch Google Calendar events
 - turn Google service-disabled failures into actionable app errors
 
-### `GmailMailboxCache`
+### Mailbox cache
 
 File: `apps/api/app/storage/mailbox_cache.py`
 
+Current implementation: `GmailMailboxCache`
+
 Responsibilities:
 
-- store Gmail thread summaries for the current provider by account, query, and page token
-- store Gmail thread detail by account and thread id
+- store thread summaries for the current live mail integration by account, query, and page token
+- store opened thread detail by account and thread id
 - serve cached first-page inbox summaries before a background refresh
 - keep mailbox cache state separate from the in-memory demo store
 
@@ -143,9 +145,7 @@ File: `apps/api/app/integrations/google_workspace.py`
 
 Current behavior:
 
-- current concrete implementation behind the provider-ready mail integration layer
-- Gmail is the first live mail provider
-- future providers are intended to plug into the same mail integration layer later
+- current concrete implementation behind the live mail integration layer
 - uses Gmail API for inbox summaries, thread detail, and replies
 - uses Google Calendar API for the calendar workspace
 - requires Google OAuth client configuration plus enabled Gmail and Calendar APIs
