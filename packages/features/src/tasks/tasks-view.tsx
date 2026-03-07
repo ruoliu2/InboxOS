@@ -4,7 +4,6 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "@inboxos/lib/api";
 import { formatDate } from "@inboxos/lib/format";
-import { mockTasks } from "@inboxos/lib/mock-data";
 import { TaskItem } from "@inboxos/types";
 
 type StatusFilter = "all" | "open" | "completed";
@@ -49,25 +48,16 @@ export function TasksView() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
-  const [isDemoMode, setIsDemoMode] = useState(false);
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const data = await api.getTasks();
-      if (data.length === 0) {
-        setTasks(mockTasks);
-        setIsDemoMode(true);
-        setMessage("API returned no tasks. Showing demo task data.");
-      } else {
-        setTasks(data);
-        setIsDemoMode(false);
-      }
-    } catch {
-      setTasks(mockTasks);
-      setIsDemoMode(true);
-      setMessage("API unavailable. Showing demo task data.");
+      setTasks(data);
+    } catch (loadError) {
+      setTasks([]);
+      setError((loadError as Error).message);
     } finally {
       setLoading(false);
     }
@@ -154,28 +144,13 @@ export function TasksView() {
     setMessage(null);
     setError(null);
     try {
-      if (isDemoMode) {
-        const now = new Date().toISOString();
-        const nextTask: TaskItem = {
-          id: `TASK-${Math.floor(1000 + Math.random() * 9000)}`,
-          title: newTitle.trim(),
-          status: "open",
-          due_at: newDueAt ? new Date(newDueAt).toISOString() : null,
-          thread_id: null,
-          category: newCategory.trim() || "general",
-          created_at: now,
-          completed_at: null,
-        };
-        setTasks((current) => [nextTask, ...current]);
-      } else {
-        await api.createTask({
-          title: newTitle.trim(),
-          category: newCategory.trim() || null,
-          due_at: newDueAt ? new Date(newDueAt).toISOString() : null,
-          thread_id: null,
-        });
-        await loadTasks();
-      }
+      await api.createTask({
+        title: newTitle.trim(),
+        category: newCategory.trim() || null,
+        due_at: newDueAt ? new Date(newDueAt).toISOString() : null,
+        thread_id: null,
+      });
+      await loadTasks();
       setNewTitle("");
       setNewCategory("");
       setNewDueAt("");
@@ -192,19 +167,8 @@ export function TasksView() {
     setMessage(null);
     setError(null);
     try {
-      if (isDemoMode) {
-        const completedAt = new Date().toISOString();
-        setTasks((current) =>
-          current.map((task) =>
-            task.id === taskId
-              ? { ...task, status: "completed", completed_at: completedAt }
-              : task,
-          ),
-        );
-      } else {
-        await api.completeTask(taskId);
-        await loadTasks();
-      }
+      await api.completeTask(taskId);
+      await loadTasks();
       setMessage("Task marked complete.");
     } catch (completeError) {
       setError((completeError as Error).message);
@@ -223,11 +187,7 @@ export function TasksView() {
       <section className="panel-surface tasks-hero">
         <div>
           <h1>Tasks</h1>
-          <p>
-            Shadcn-style task workflow with filters, pagination, and row
-            actions.
-          </p>
-          {isDemoMode ? <p className="muted">Demo mode enabled</p> : null}
+          <p>Task workflow with filters, pagination, and completion actions.</p>
         </div>
         <div className="task-kpis">
           <div>

@@ -14,6 +14,7 @@ from app.services.thread_service import ThreadService
 from app.storage.auth_store import AuthSessionRecord, SQLiteAuthStore
 from app.storage.mailbox_cache import GmailMailboxCache
 from app.storage.store import get_store
+from app.storage.task_store import TaskStore, build_task_store
 
 
 @lru_cache
@@ -28,7 +29,7 @@ def get_thread_service() -> ThreadService:
 
 @lru_cache
 def get_task_service() -> TaskService:
-    return TaskService(get_store())
+    return TaskService(get_task_store())
 
 
 @lru_cache
@@ -39,6 +40,11 @@ def get_sync_service() -> SyncService:
         get_thread_service(),
         get_task_service(),
     )
+
+
+@lru_cache
+def get_task_store() -> TaskStore:
+    return build_task_store(get_settings().tasks_database_url)
 
 
 @lru_cache

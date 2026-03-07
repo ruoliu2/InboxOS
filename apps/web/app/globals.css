@@ -657,6 +657,22 @@ textarea {
   gap: 9px;
 }
 
+.compose-mode-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.compose-mode-row strong {
+  font-size: 0.82rem;
+}
+
+.compose-recipient-grid {
+  display: grid;
+  gap: 8px;
+}
+
 .reply-actions {
   display: flex;
   align-items: center;
@@ -686,6 +702,94 @@ textarea {
 
 .send-button:hover {
   background: #000;
+}
+
+.toolbar-menu-wrap {
+  position: relative;
+}
+
+.disabled-toolbar-button {
+  opacity: 0.55;
+}
+
+.overflow-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 180px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+  z-index: 10;
+}
+
+.overflow-menu button {
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  padding: 8px 10px;
+  box-shadow: none;
+}
+
+.overflow-menu button:hover {
+  background: #f4f4f5;
+}
+
+.overflow-menu button.danger-item {
+  color: #b91c1c;
+}
+
+.overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(15, 23, 42, 0.38);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.overlay-card {
+  width: min(520px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18);
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.overlay-copy h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.overlay-copy p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.overlay-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-danger {
+  border-color: #b91c1c;
+  background: #b91c1c;
+  color: #fff;
+}
+
+.btn-danger:hover {
+  background: #991b1b;
 }
 
 .tasks-layout {
@@ -1058,6 +1162,7 @@ textarea {
 }
 
 .schedule-allday-pill {
+  border: 0;
   border-radius: 999px;
   padding: 2px 8px;
   font-size: 0.7rem;
@@ -1122,6 +1227,7 @@ textarea {
   padding: 6px 8px;
   overflow: hidden;
   text-align: left;
+  box-shadow: none;
 }
 
 .schedule-event h3 {
@@ -1294,6 +1400,9 @@ textarea {
   border-radius: 10px;
   background: #fff;
   padding: 9px 10px 9px 12px;
+  width: 100%;
+  text-align: left;
+  box-shadow: none;
 }
 
 .agenda-item::before {
@@ -1363,6 +1472,22 @@ textarea {
   gap: 5px;
 }
 
+.upcoming-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 0;
+  box-shadow: none;
+}
+
+.upcoming-item:hover {
+  background: transparent;
+}
+
 .agenda-upcoming p {
   margin: 0;
   display: grid;
@@ -1383,6 +1508,52 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.calendar-modal {
+  width: min(560px, 100%);
+}
+
+.calendar-form {
+  display: grid;
+  gap: 10px;
+}
+
+.calendar-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.calendar-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: #3f3f46;
+}
+
+.calendar-checkbox input {
+  width: 16px;
+  height: 16px;
+}
+
+.calendar-event-detail {
+  display: grid;
+  gap: 10px;
+}
+
+.calendar-event-detail p {
+  margin: 0;
+  color: #3f3f46;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.calendar-event-detail a {
+  color: #1d4ed8;
+  font-weight: 500;
 }
 
 .auth-layout {

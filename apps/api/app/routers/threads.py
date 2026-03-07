@@ -8,9 +8,14 @@ from app.schemas.thread import (
     ThreadDetail,
     ThreadSummary,
 )
-from app.services.dependencies import get_task_service, get_thread_service
+from app.services.dependencies import (
+    get_current_auth_session,
+    get_task_service,
+    get_thread_service,
+)
 from app.services.task_service import TaskService
 from app.services.thread_service import ThreadService
+from app.storage.auth_store import AuthSessionRecord
 
 router = APIRouter()
 
@@ -37,6 +42,7 @@ def get_thread(
 @router.post("/{thread_id}/analyze", response_model=AnalyzeThreadResponse)
 def analyze_thread(
     thread_id: str,
+    session: AuthSessionRecord = Depends(get_current_auth_session),
     thread_service: ThreadService = Depends(get_thread_service),
     task_service: TaskService = Depends(get_task_service),
 ) -> AnalyzeThreadResponse:
@@ -45,7 +51,7 @@ def analyze_thread(
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    task_service.create_tasks_for_thread(thread)
+    task_service.create_tasks_for_thread(session.account_email, thread)
     return AnalyzeThreadResponse(thread_id=thread_id, analysis=analysis)
 
 

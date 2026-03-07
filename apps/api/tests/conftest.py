@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,7 +11,11 @@ from app.services.dependencies import (
     get_auth_store,
     get_gmail_mailbox_cache,
     get_google_workspace_client,
+    get_sync_service,
+    get_task_service,
+    get_task_store,
 )
+from app.storage.auth_store import AuthSessionRecord
 from app.storage.store import get_store
 
 
@@ -25,15 +29,21 @@ def reset_store_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
         "GMAIL_CACHE_DB_PATH",
         str(tmp_path / "gmail_mailbox_cache.sqlite3"),
     )
+    monkeypatch.setenv(
+        "TASKS_DATABASE_URL",
+        f"sqlite:///{tmp_path / 'tasks.sqlite3'}",
+    )
     get_settings.cache_clear()
     get_auth_service.cache_clear()
     get_auth_store.cache_clear()
     get_gmail_mailbox_cache.cache_clear()
     get_google_workspace_client.cache_clear()
+    get_task_store.cache_clear()
+    get_task_service.cache_clear()
+    get_sync_service.cache_clear()
 
     store = get_store()
     store.threads = {}
-    store.tasks = {}
     store.sync_status = {
         "sync_id": None,
         "status": SyncStatus.IDLE,
@@ -43,14 +53,46 @@ def reset_store_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     }
     get_auth_store().clear()
     get_gmail_mailbox_cache().clear()
+    get_task_store().clear()
     yield
     get_auth_service.cache_clear()
     get_auth_store.cache_clear()
     get_gmail_mailbox_cache.cache_clear()
     get_google_workspace_client.cache_clear()
+    get_task_store.cache_clear()
+    get_task_service.cache_clear()
+    get_sync_service.cache_clear()
     get_settings.cache_clear()
 
 
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(app)
+
+
+def build_session(**overrides: object) -> AuthSessionRecord:
+    now = datetime.now(UTC)
+    values: dict[str, object] = {
+        "session_id": "session-1",
+        "provider": "google",
+        "account_email": "user@gmail.com",
+        "account_name": "Inbox User",
+        "account_picture": None,
+        "access_token": "access-token",
+        "refresh_token": "refresh-token",
+        "scope": "email profile",
+        "expires_at": now + timedelta(hours=1),
+        "session_expires_at": now + timedelta(days=30),
+        "created_at": now,
+        "updated_at": now,
+    }
+    values.update(overrides)
+    return AuthSessionRecord(**values)
+
+
+@pytest.fixture
+def authenticated_client(client: TestClient) -> TestClient:
+    session = build_session()
+    get_auth_store().upsert_session(session)
+    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+    return client

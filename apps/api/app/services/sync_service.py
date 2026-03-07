@@ -21,7 +21,9 @@ class SyncService:
         self.thread_service = thread_service
         self.task_service = task_service
 
-    def start_sync(self, payload: SyncStartRequest) -> dict[str, object]:
+    def start_sync(
+        self, payload: SyncStartRequest, *, account_email: str
+    ) -> dict[str, object]:
         sync_id = f"sync_{int(datetime.now(UTC).timestamp())}"
         self.store.sync_status = {
             "sync_id": sync_id,
@@ -32,12 +34,14 @@ class SyncService:
         }
 
         try:
-            threads = self.mail_adapter.sync_threads(payload.account_email)
+            threads = self.mail_adapter.sync_threads(account_email)
             self.store.set_threads(threads)
 
             for thread in threads:
                 analyzed_thread, _ = self.thread_service.analyze_thread(thread.id)
-                self.task_service.create_tasks_for_thread(analyzed_thread)
+                self.task_service.create_tasks_for_thread(
+                    account_email, analyzed_thread
+                )
 
             self.store.sync_status = {
                 "sync_id": sync_id,
