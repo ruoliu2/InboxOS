@@ -3,8 +3,16 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
+def resolve_repo_root(api_root: Path) -> Path:
+    parents = api_root.parents
+    if len(parents) >= 2:
+        return parents[1]
+    return api_root
+
+
 API_ROOT = Path(__file__).resolve().parents[2]
-REPO_ROOT = API_ROOT.parents[1]
+REPO_ROOT = resolve_repo_root(API_ROOT)
 
 
 class Settings(BaseSettings):
