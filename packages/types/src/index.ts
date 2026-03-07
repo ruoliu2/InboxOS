@@ -99,6 +99,8 @@ export type TaskItem = {
   title: string;
   status: TaskStatus;
   due_at: string | null;
+  linked_account_id: string | null;
+  conversation_id: string | null;
   thread_id: string | null;
   category: string | null;
   created_at: string;
@@ -111,8 +113,30 @@ export type AuthStartResponse = {
   state: string;
 };
 
+export type AuthUser = {
+  id: string;
+  primary_email: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+};
+
+export type LinkedAccount = {
+  id: string;
+  provider: string;
+  provider_account_id: string;
+  provider_account_ref: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  status: string;
+  capabilities: string[];
+  last_synced_at: string | null;
+};
+
 export type AuthSessionResponse = {
   authenticated: boolean;
+  user?: AuthUser | null;
+  active_account_id?: string | null;
+  linked_accounts?: LinkedAccount[];
   provider: string | null;
   account_email: string | null;
   account_name: string | null;
@@ -134,6 +158,8 @@ export type CalendarEvent = {
 export type CreateTaskRequest = {
   title: string;
   due_at?: string | null;
+  linked_account_id?: string | null;
+  conversation_id?: string | null;
   thread_id?: string | null;
   category?: string | null;
 };

@@ -13,6 +13,15 @@ from app.storage.auth_store import AuthSessionRecord
 router = APIRouter()
 
 
+def require_google_access_token(session: AuthSessionRecord) -> str:
+    if not session.access_token:
+        raise HTTPException(
+            status_code=401,
+            detail="An active linked Google account is required.",
+        )
+    return session.access_token
+
+
 @router.get("/events", response_model=list[CalendarEvent])
 def list_calendar_events(
     time_min: datetime | None = Query(default=None),
@@ -20,12 +29,13 @@ def list_calendar_events(
     session: AuthSessionRecord = Depends(get_current_auth_session),
     client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
 ) -> list[CalendarEvent]:
+    access_token = require_google_access_token(session)
     start = time_min or (datetime.now(UTC) - timedelta(days=14))
     end = time_max or (datetime.now(UTC) + timedelta(days=60))
 
     try:
         return client.list_calendar_events(
-            session.access_token,
+            access_token,
             time_min=start,
             time_max=end,
         )
@@ -41,8 +51,9 @@ def create_calendar_event(
     session: AuthSessionRecord = Depends(get_current_auth_session),
     client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
 ) -> CalendarEvent:
+    access_token = require_google_access_token(session)
     try:
-        return client.create_calendar_event(session.access_token, payload)
+        return client.create_calendar_event(access_token, payload)
     except GoogleAPIError as exc:
         raise HTTPException(status_code=exc.app_status_code, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -55,8 +66,9 @@ def delete_calendar_event(
     session: AuthSessionRecord = Depends(get_current_auth_session),
     client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
 ) -> None:
+    access_token = require_google_access_token(session)
     try:
-        client.delete_calendar_event(session.access_token, event_id)
+        client.delete_calendar_event(access_token, event_id)
     except GoogleAPIError as exc:
         raise HTTPException(status_code=exc.app_status_code, detail=str(exc)) from exc
     except RuntimeError as exc:

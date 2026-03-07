@@ -1,4 +1,4 @@
-.PHONY: api-dev web-dev desktop-dev dev api-test api-lint api-format web-lint web-format web-build format install-hooks up down
+.PHONY: api-dev web-dev desktop-dev dev api-test api-lint api-format web-lint web-format web-build format install-hooks up down down-v supabase-start supabase-stop supabase-reset
 
 api-dev:
 	cd apps/api && uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -41,3 +41,15 @@ up:
 
 down:
 	docker compose down
+
+down-v:
+	docker compose down -v
+
+supabase-start:
+	supabase start
+
+supabase-stop:
+	supabase stop
+
+supabase-reset:
+	supabase db reset

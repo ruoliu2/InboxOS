@@ -6,19 +6,25 @@ from app.core.config import get_settings
 from app.integrations.google_workspace import GoogleWorkspaceClient
 from app.services.auth_service import AuthService
 from app.services.task_service import TaskService
-from app.storage.auth_store import AuthSessionRecord, SQLiteAuthStore
+from app.storage.auth_store import AuthSessionRecord, AuthStore, build_auth_store
+from app.storage.conversation_store import ConversationStore, build_conversation_store
 from app.storage.mailbox_cache import GmailMailboxCache
 from app.storage.task_store import TaskStore, build_task_store
 
 
 @lru_cache
 def get_task_store() -> TaskStore:
-    return build_task_store(get_settings().tasks_database_url)
+    return build_task_store(get_settings().database_url)
+
+
+@lru_cache
+def get_conversation_store() -> ConversationStore:
+    return build_conversation_store(get_settings().database_url)
 
 
 @lru_cache
 def get_task_service() -> TaskService:
-    return TaskService(get_task_store())
+    return TaskService(get_task_store(), get_conversation_store())
 
 
 @lru_cache
@@ -32,17 +38,22 @@ def get_gmail_mailbox_cache() -> GmailMailboxCache:
 
 
 @lru_cache
-def get_auth_store() -> SQLiteAuthStore:
+def get_auth_store() -> AuthStore:
     settings = get_settings()
-    return SQLiteAuthStore(
-        settings.session_db_path,
+    return build_auth_store(
+        settings.database_url,
         settings.oauth_state_ttl_seconds,
+        settings.credential_encryption_key,
     )
 
 
 @lru_cache
 def get_auth_service() -> AuthService:
-    return AuthService(get_auth_store(), get_google_workspace_client(), get_settings())
+    return AuthService(
+        get_auth_store(),
+        get_google_workspace_client(),
+        get_settings(),
+    )
 
 
 def get_current_auth_session(

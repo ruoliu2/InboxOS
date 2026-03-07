@@ -1,5 +1,6 @@
 import { API_BASE } from "@inboxos/config/web";
 import {
+  LinkedAccount,
   AuthSessionResponse,
   AuthStartResponse,
   CalendarEvent,
@@ -70,6 +71,20 @@ export const api = {
     request<AuthStartResponse>(
       `/auth/google/start?redirect_to=${encodeURIComponent(redirectTo)}`,
     ),
+  startAccountConnect: (provider: string, redirectTo = "/mail") =>
+    request<AuthStartResponse>(
+      `/accounts/${encodeURIComponent(provider)}/connect/start?redirect_to=${encodeURIComponent(redirectTo)}`,
+      { method: "POST" },
+    ),
+  getAccounts: () => request<LinkedAccount[]>("/accounts"),
+  activateAccount: (accountId: string) =>
+    request<AuthSessionResponse>(`/accounts/${accountId}/activate`, {
+      method: "POST",
+    }),
+  disconnectAccount: (accountId: string) =>
+    request<void>(`/accounts/${accountId}/disconnect`, {
+      method: "POST",
+    }),
   getSession: () => request<AuthSessionResponse>("/auth/session"),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   getGmailMailboxCounts: () => request<MailboxCounts>("/gmail/mailbox-counts"),

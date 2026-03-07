@@ -495,8 +495,8 @@ export function CalendarWorkspace() {
             <div className="calendar-title-copy">
               <h1>{formatViewTitle(viewMode, selectedDate, visibleMonth)}</h1>
               <p>
-                {session?.account_email
-                  ? `Primary Google Calendar for ${session.account_email}`
+                {(session?.account_email ?? session?.user?.primary_email)
+                  ? `Primary Google Calendar for ${session?.account_email ?? session?.user?.primary_email}`
                   : "Primary Google Calendar"}
               </p>
             </div>
