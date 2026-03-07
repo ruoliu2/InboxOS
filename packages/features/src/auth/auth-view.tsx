@@ -1,47 +1,75 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { api } from "@inboxos/lib/api";
+import { AuthSessionResponse } from "@inboxos/types";
 
 export function AuthView() {
-  const [email, setEmail] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [authUrl, setAuthUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [session, setSession] = useState<AuthSessionResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(
+    searchParams.get("error") ?? null,
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadSession() {
+      try {
+        const nextSession = await api.getSession();
+        if (!isMounted) {
+          return;
+        }
+        if (nextSession.authenticated) {
+          setSession(nextSession);
+        } else {
+          setSession(null);
+        }
+      } catch (sessionError) {
+        if (isMounted) {
+          setError((sessionError as Error).message);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadSession();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   async function handleGoogleConnect() {
-    setIsLoading(true);
+    setIsConnecting(true);
     setError(null);
-    setMessage(null);
 
     try {
-      const result = await api.startGoogleAuth();
-      setAuthUrl(result.authorization_url);
-      setMessage("Google OAuth URL generated. Open it to continue sign-in.");
-      if (typeof window !== "undefined") {
-        window.open(result.authorization_url, "_blank", "noopener,noreferrer");
-      }
+      const result = await api.startGoogleAuth("/mail");
+      window.location.href = result.authorization_url;
     } catch (connectError) {
       setError((connectError as Error).message);
-    } finally {
-      setIsLoading(false);
+      setIsConnecting(false);
     }
   }
 
-  function handleEmailSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-
-    if (!email.trim()) {
-      setError("Email is required.");
-      return;
+  async function handleLogout() {
+    setIsLoading(true);
+    try {
+      await api.logout();
+      setSession(null);
+    } catch (logoutError) {
+      setError((logoutError as Error).message);
+    } finally {
+      setIsLoading(false);
     }
-
-    setMessage(
-      "Email sign-in is scaffolded for MVP. Use Google connect for now.",
-    );
   }
 
   return (
@@ -49,59 +77,64 @@ export function AuthView() {
       <section className="auth-left">
         <div>
           <h1>InboxOS</h1>
-          <p>Shared Mail-style experience across web and macOS.</p>
+          <p>
+            Connect Google once, then use the same mailbox and calendar across
+            the web shell and desktop shell.
+          </p>
+        </div>
+        <div className="auth-feature-list">
+          <p>Gmail inbox threads</p>
+          <p>Google Calendar events</p>
+          <p>Cookie-backed session redirect</p>
         </div>
         <blockquote>
           <p>
-            “Mail-like UI with built-in AI actions made triage and follow-ups
-            faster than switching across inbox, notes, and reminders.”
+            One sign-in flow, then the app opens directly into mail instead of a
+            mock workspace.
           </p>
-          <footer>Early MVP user</footer>
+          <footer>Google workspace mode</footer>
         </blockquote>
       </section>
 
       <section className="auth-right">
         <div className="auth-card">
-          <h2>Sign In</h2>
-          <p>Use the same authentication flow for web and desktop clients.</p>
-
-          <form onSubmit={handleEmailSubmit} className="auth-form">
-            <label htmlFor="auth-email">Email</label>
-            <input
-              id="auth-email"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="name@example.com"
-              autoComplete="email"
-            />
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={isLoading}
-            >
-              Continue With Email
-            </button>
-          </form>
-
-          <div className="auth-divider">or</div>
-
-          <button
-            className="btn"
-            type="button"
-            onClick={handleGoogleConnect}
-            disabled={isLoading}
-          >
-            {isLoading ? "Connecting..." : "Connect Google"}
-          </button>
+          <h2>{session?.authenticated ? "Google Connected" : "Sign In"}</h2>
+          <p>
+            {session?.authenticated
+              ? `Signed in as ${session.account_email ?? "your Google account"}.`
+              : "Use Google OAuth to load your Gmail inbox and primary calendar."}
+          </p>
 
           {error ? <p className="status error">{error}</p> : null}
-          {message ? <p className="status">{message}</p> : null}
-          {authUrl ? (
-            <p className="muted auth-url" title={authUrl}>
-              OAuth URL: {authUrl}
-            </p>
-          ) : null}
+
+          {session?.authenticated ? (
+            <div className="auth-actions">
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => router.push("/mail")}
+              >
+                Open Mail
+              </button>
+              <button type="button" onClick={() => router.push("/calendar")}>
+                Open Calendar
+              </button>
+              <button type="button" onClick={handleLogout} disabled={isLoading}>
+                Sign Out
+              </button>
+            </div>
+          ) : (
+            <button
+              className="btn btn-primary auth-google-btn"
+              type="button"
+              onClick={handleGoogleConnect}
+              disabled={isConnecting || isLoading}
+            >
+              {isConnecting
+                ? "Redirecting to Google..."
+                : "Continue with Google"}
+            </button>
+          )}
         </div>
       </section>
     </main>

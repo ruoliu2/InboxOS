@@ -10,6 +10,12 @@ export type ThreadSummary = {
   action_states: ActionState[];
 };
 
+export type ThreadSummaryPage = {
+  threads: ThreadSummary[];
+  next_page_token: string | null;
+  has_more: boolean;
+};
+
 export type ThreadMessage = {
   id: string;
   sender: string;
@@ -60,6 +66,25 @@ export type AuthStartResponse = {
   provider: string;
   authorization_url: string;
   state: string;
+};
+
+export type AuthSessionResponse = {
+  authenticated: boolean;
+  provider: string | null;
+  account_email: string | null;
+  account_name: string | null;
+  account_picture: string | null;
+};
+
+export type CalendarEvent = {
+  id: string;
+  title: string;
+  starts_at: string;
+  ends_at: string;
+  location: string | null;
+  description: string | null;
+  is_all_day: boolean;
+  html_link: string | null;
 };
 
 export type CreateTaskRequest = {

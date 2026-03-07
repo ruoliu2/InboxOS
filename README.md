@@ -56,6 +56,9 @@ F1 --> G1["Thread updates in place"]
 ### Backend
 
 ```bash
+cp .env.example .env
+# Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env before using Google sign-in.
+
 cd apps/api
 uv sync --group dev
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

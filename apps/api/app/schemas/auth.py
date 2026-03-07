@@ -12,3 +12,11 @@ class AuthCallbackResponse(BaseModel):
     connected: bool
     account_email: str
     message: str
+
+
+class AuthSessionResponse(BaseModel):
+    authenticated: bool
+    provider: str | None = None
+    account_email: str | None = None
+    account_name: str | None = None
+    account_picture: str | None = None
