@@ -112,7 +112,7 @@ Primary files:
 
 Responsibilities:
 
-- centralize API requests
+- centralize auth, Gmail, calendar, and task API requests
 - keep demo fallback task data in one place
 - share stable TypeScript models across screens
 - expose environment-driven client configuration

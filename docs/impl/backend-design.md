@@ -30,6 +30,8 @@ Backend root: `apps/api/`
 - `GET /gmail/threads/{thread_id}`
 - `POST /gmail/threads/{thread_id}/reply`
 
+These are the provider-specific routes for the first shipped mail integration.
+
 ### Calendar
 
 - `GET /calendar/events`
@@ -88,6 +90,7 @@ Responsibilities:
 - load Gmail thread summaries and full thread detail
 - send Gmail replies
 - load Google Calendar events
+- turn Google service-disabled failures into actionable app errors
 
 ## Integration Boundaries
 
