@@ -234,10 +234,11 @@ class GoogleWorkspaceClient:
         message = EmailMessage()
 
         if payload.mode == ComposeMode.REPLY:
-            recipients = [
-                parseaddr(headers.get("reply-to") or "")[1]
-                or parseaddr(headers.get("from") or "")[1]
-            ]
+            recipient = self._resolve_reply_recipient(
+                raw_messages,
+                account_email=account_email,
+            )
+            recipients = [recipient] if recipient else []
             cc_recipients: list[str] = []
             subject = self._prefix_subject(headers.get("subject"), "Re:")
             message_body = payload.body.strip()
@@ -631,6 +632,21 @@ class GoogleWorkspaceClient:
                 values[name] = value
         return values
 
+    def _resolve_reply_recipient(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        account_email: str,
+    ) -> str | None:
+        normalized_account = account_email.strip().lower()
+        for item in reversed(messages):
+            headers = self._headers_map(item.get("payload", {}).get("headers", []))
+            for header_name in ("reply-to", "from"):
+                candidate = parseaddr(headers.get(header_name) or "")[1].strip()
+                if candidate and candidate.lower() != normalized_account:
+                    return candidate
+        return None
+
     def _parse_result_size_estimate(self, payload: dict[str, Any]) -> int | None:
         raw_value = payload.get("resultSizeEstimate")
         if raw_value is None:
@@ -821,7 +837,7 @@ class GoogleWorkspaceClient:
 
         html = self._find_body_part(payload, "text/html")
         if html:
-            text = re.sub(r"<br\\s*/?>", "\n", html, flags=re.IGNORECASE)
+            text = re.sub(r"<br\s*/?>", "\n", html, flags=re.IGNORECASE)
             text = re.sub(r"</(p|div|li|tr|h[1-6])>", "\n", text, flags=re.IGNORECASE)
             text = re.sub(r"<[^>]+>", "", text)
             text = unescape(text)

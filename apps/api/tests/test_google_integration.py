@@ -1,3 +1,4 @@
+import base64
 import sqlite3
 from datetime import UTC, datetime, timedelta
 
@@ -81,6 +82,10 @@ def mock_google_login(monkeypatch: pytest.MonkeyPatch) -> None:
             },
         )(),
     )
+
+
+def encode_gmail_body(value: str) -> str:
+    return base64.urlsafe_b64encode(value.encode("utf-8")).decode("utf-8").rstrip("=")
 
 
 def restart_auth_dependencies() -> None:
@@ -919,6 +924,116 @@ def test_google_client_returns_total_count_for_empty_thread_page(monkeypatch):
     assert page.has_more is False
     assert page.next_page_token is None
     assert page.total_count == 0
+
+
+def test_google_client_extracts_html_body_breaks():
+    google_client = get_google_workspace_client()
+
+    body = google_client._extract_message_body(
+        {
+            "mimeType": "text/html",
+            "body": {
+                "data": encode_gmail_body(
+                    "<div>Line one<br/>Line two<br />Line three</div>"
+                )
+            },
+        }
+    )
+
+    assert body == "Line one\nLine two\nLine three"
+
+
+def test_google_client_reply_uses_latest_non_self_sender(monkeypatch):
+    google_client = get_google_workspace_client()
+    sent: dict[str, str] = {}
+    sent_thread = ThreadDetail(
+        id="thread-1",
+        subject="Re: Launch plan",
+        snippet="Thanks for confirming",
+        participants=["founder@example.com", "user@gmail.com"],
+        last_message_at=datetime.now(UTC),
+        action_states=[ActionState.FYI],
+        messages=[
+            ThreadMessage(
+                id="message-older",
+                sender="founder@example.com",
+                sent_at=datetime.now(UTC) - timedelta(hours=1),
+                body="Can you confirm?",
+            ),
+            ThreadMessage(
+                id="message-sent",
+                sender="user@gmail.com",
+                sent_at=datetime.now(UTC),
+                body="Confirmed.",
+            ),
+        ],
+        analysis=None,
+    )
+    thread_payload = {
+        "id": "thread-1",
+        "messages": [
+            {
+                "id": "message-older",
+                "payload": {
+                    "headers": [
+                        {"name": "From", "value": "Founder <founder@example.com>"},
+                        {"name": "To", "value": "user@gmail.com"},
+                        {"name": "Subject", "value": "Launch plan"},
+                        {"name": "Message-Id", "value": "<message-older@example.com>"},
+                    ]
+                },
+            },
+            {
+                "id": "message-sent",
+                "payload": {
+                    "headers": [
+                        {"name": "From", "value": "User <user@gmail.com>"},
+                        {"name": "To", "value": "Founder <founder@example.com>"},
+                        {"name": "Subject", "value": "Re: Launch plan"},
+                        {"name": "Message-Id", "value": "<message-sent@example.com>"},
+                        {"name": "References", "value": "<message-older@example.com>"},
+                    ]
+                },
+            },
+        ],
+    }
+
+    monkeypatch.setattr(
+        google_client,
+        "_get_gmail_thread_payload",
+        lambda access_token, thread_id: thread_payload,
+    )
+    monkeypatch.setattr(
+        google_client,
+        "get_gmail_thread",
+        lambda access_token, thread_id: sent_thread,
+    )
+
+    def fake_request(method: str, url: str, **kwargs):
+        if method == "POST" and url.endswith("/messages/send"):
+            sent["raw"] = kwargs["json"]["raw"]
+            sent["threadId"] = kwargs["json"]["threadId"]
+            return {"id": "gmail-api-message-id"}
+        raise AssertionError(f"Unexpected request: {method} {url}")
+
+    monkeypatch.setattr(google_client, "_request", fake_request)
+
+    result = google_client.compose_gmail_thread(
+        "access-token",
+        account_email="user@gmail.com",
+        thread_id="thread-1",
+        payload=ComposeThreadRequest(mode=ComposeMode.REPLY, body="Confirmed."),
+    )
+
+    assert result.thread == sent_thread
+    assert result.sent_message == sent_thread.messages[-1]
+    assert sent["threadId"] == "thread-1"
+
+    raw_message = base64.urlsafe_b64decode(
+        sent["raw"] + "=" * (-len(sent["raw"]) % 4)
+    ).decode("utf-8")
+    assert "To: founder@example.com" in raw_message
+    assert "In-Reply-To: <message-sent@example.com>" in raw_message
 
 
 def test_gmail_mailbox_cache_round_trips_total_count_for_empty_page(tmp_path):
