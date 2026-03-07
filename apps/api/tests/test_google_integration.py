@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -16,6 +17,7 @@ from app.services.dependencies import (
     get_gmail_mailbox_cache,
     get_google_workspace_client,
 )
+from app.storage.mailbox_cache import GmailMailboxCache
 from app.storage.store import AuthSessionRecord, get_store
 
 
@@ -418,3 +420,118 @@ def test_opening_gmail_thread_updates_detail_cache(client, monkeypatch):
     )
     assert cached_thread is not None
     assert cached_thread.id == "gmail-thread-2"
+
+
+def test_google_client_reply_targets_latest_non_self_sender(monkeypatch):
+    google_client = get_google_workspace_client()
+    sent_payloads: list[dict[str, object]] = []
+    full_thread_payload = {
+        "id": "thread-1",
+        "snippet": "Latest reply",
+        "messages": [
+            {
+                "id": "message-1",
+                "internalDate": str(int(datetime.now(UTC).timestamp() * 1000)),
+                "labelIds": ["INBOX"],
+                "payload": {
+                    "headers": [
+                        {"name": "Subject", "value": "Launch plan"},
+                        {"name": "From", "value": "Founder <founder@example.com>"},
+                        {"name": "To", "value": "user@gmail.com"},
+                        {"name": "Message-ID", "value": "<external-1@example.com>"},
+                    ]
+                },
+            },
+            {
+                "id": "message-2",
+                "internalDate": str(int(datetime.now(UTC).timestamp() * 1000)),
+                "labelIds": ["INBOX"],
+                "payload": {
+                    "headers": [
+                        {"name": "Subject", "value": "Launch plan"},
+                        {"name": "From", "value": "user@gmail.com"},
+                        {"name": "To", "value": "founder@example.com"},
+                        {"name": "Message-ID", "value": "<self-1@example.com>"},
+                        {"name": "References", "value": "<external-1@example.com>"},
+                    ]
+                },
+            },
+        ],
+    }
+
+    def fake_request(method: str, url: str, **kwargs):
+        if method == "GET" and url.endswith("/threads/thread-1"):
+            return full_thread_payload
+        if method == "POST" and url.endswith("/messages/send"):
+            sent_payloads.append(kwargs["json"])
+            return {"id": "sent-message"}
+        raise AssertionError(f"Unexpected request: {method} {url}")
+
+    monkeypatch.setattr(google_client, "_request", fake_request)
+
+    google_client.send_gmail_reply(
+        "access-token",
+        account_email="user@gmail.com",
+        thread_id="thread-1",
+        body="Sounds good.",
+    )
+
+    assert len(sent_payloads) == 1
+    raw = sent_payloads[0]["raw"]
+    assert isinstance(raw, str)
+    decoded = google_client._decode_base64url(raw)
+    assert "To: founder@example.com" in decoded
+    assert "To: user@gmail.com" not in decoded
+
+
+def test_google_client_extracts_html_breaks():
+    google_client = get_google_workspace_client()
+    payload = {
+        "mimeType": "text/html",
+        "body": {
+            "data": "PGRpdj5MaW5lIG9uZTxici8+TGluZSB0d288YnIgLz5MaW5lIHRocmVlPC9kaXY+"
+        },
+    }
+
+    assert (
+        google_client._extract_message_body(payload) == "Line one\nLine two\nLine three"
+    )
+
+
+def test_gmail_mailbox_cache_closes_sqlite_connections(monkeypatch, tmp_path):
+    calls = {"closed": 0}
+    real_connect = sqlite3.connect
+
+    class TrackingConnection(sqlite3.Connection):
+        def close(self) -> None:
+            calls["closed"] += 1
+            super().close()
+
+    def tracking_connect(*args, **kwargs):
+        kwargs["factory"] = TrackingConnection
+        return real_connect(*args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", tracking_connect)
+
+    cache = GmailMailboxCache(str(tmp_path / "gmail-cache.sqlite3"))
+    cache.clear()
+    cache.store_thread_page(
+        "user@gmail.com",
+        page=ThreadSummaryPage(
+            threads=[
+                ThreadSummary(
+                    id="thread-1",
+                    subject="Cached thread",
+                    snippet="Cached thread snippet",
+                    participants=["founder@example.com", "user@gmail.com"],
+                    last_message_at=datetime.now(UTC),
+                    action_states=[ActionState.FYI],
+                )
+            ],
+            next_page_token=None,
+            has_more=False,
+        ),
+    )
+    cache.get_thread_page("user@gmail.com")
+
+    assert calls["closed"] >= 3

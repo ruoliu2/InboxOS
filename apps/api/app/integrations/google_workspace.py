@@ -203,10 +203,7 @@ class GoogleWorkspaceClient:
         headers = self._headers_map(
             latest_message.get("payload", {}).get("headers", [])
         )
-        recipient = (
-            parseaddr(headers.get("reply-to") or "")[1]
-            or parseaddr(headers.get("from") or "")[1]
-        )
+        recipient = self._reply_recipient_for_thread(messages, account_email)
         if not recipient:
             raise RuntimeError("Unable to determine a Gmail reply recipient.")
 
@@ -447,6 +444,24 @@ class GoogleWorkspaceClient:
                 values[name] = value
         return values
 
+    def _reply_recipient_for_thread(
+        self,
+        messages: list[dict[str, Any]],
+        account_email: str,
+    ) -> str:
+        normalized_account = account_email.strip().lower()
+        for item in reversed(messages):
+            headers = self._headers_map(item.get("payload", {}).get("headers", []))
+            reply_to = parseaddr(headers.get("reply-to") or "")[1].strip().lower()
+            if reply_to and reply_to != normalized_account:
+                return reply_to
+
+            sender = parseaddr(headers.get("from") or "")[1].strip().lower()
+            if sender and sender != normalized_account:
+                return sender
+
+        return ""
+
     def _thread_subject(self, messages: list[dict[str, Any]]) -> str:
         for item in messages:
             headers = self._headers_map(item.get("payload", {}).get("headers", []))
@@ -486,7 +501,7 @@ class GoogleWorkspaceClient:
 
         html = self._find_body_part(payload, "text/html")
         if html:
-            text = re.sub(r"<br\\s*/?>", "\n", html, flags=re.IGNORECASE)
+            text = re.sub(r"<br\s*/?>", "\n", html, flags=re.IGNORECASE)
             text = re.sub(r"</(p|div|li|tr|h[1-6])>", "\n", text, flags=re.IGNORECASE)
             text = re.sub(r"<[^>]+>", "", text)
             text = unescape(text)
