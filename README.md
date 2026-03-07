@@ -130,28 +130,40 @@ docker compose up --build
 
 ## Deploy
 
-Production deploys run from the dedicated branch `codex/deploy-vercel-railway`, which is checked out in a sibling worktree. Update that branch by merging `origin/main` into it from the deploy worktree, then push the merge commit.
+Deploys are branch-driven:
+
+- `main` auto deploys the production environment on Vercel, Railway, and Supabase
+- `staging` auto deploys the staging environment on Vercel, Railway, and Supabase
 
 ### Web on Vercel
 
-- production branch: `codex/deploy-vercel-railway`
+- production branch: `main`
+- staging branch: `staging`
 - project root: `apps/web`
 - build command: `bun run build`
 - start command: `bun run start`
 - enable source files outside the root directory because `apps/web` imports from `packages/*`
-- env: `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_SESSION_COOKIE_NAME`
+- env per environment: `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_SESSION_COOKIE_NAME`
 
 ### API on Railway
 
-- production branch: `codex/deploy-vercel-railway`
+- production branch: `main`
+- staging branch: `staging`
 - service root: `apps/api`
 - deploy with `apps/api/Dockerfile`
 - expose port `8000`
-- attach a persistent volume at `/data`
+- attach a separate persistent volume at `/data` in each environment
 - set `SESSION_DB_PATH=/data/auth_sessions.sqlite3`
-- set env vars from `.env.example` plus production overrides for `SESSION_COOKIE_SECURE`, `CORS_ORIGINS`, and `WEB_BASE_URL`
+- set env vars from `.env.example` plus environment-specific overrides for `APP_ENV`, `SESSION_COOKIE_SECURE`, `CORS_ORIGINS`, and `WEB_BASE_URL`
 - optionally put `GMAIL_CACHE_DB_PATH` on persistent storage if mailbox cache should survive container replacement
 - `GOOGLE_REDIRECT_URI` is optional on Railway when `RAILWAY_PUBLIC_DOMAIN` is available, but can still be set explicitly
+
+### Supabase
+
+- production branch: `main`
+- staging branch: `staging`
+- GitHub Actions deploys remote migrations and edge functions from `.github/workflows/supabase-release.yml`
+- create separate Supabase projects for production and staging, then map them to GitHub environments named `production` and `staging`
 
 See [docs/deployment/vercel-railway-runbook.md](./docs/deployment/vercel-railway-runbook.md) for the full provider setup and rollout sequence.
 
