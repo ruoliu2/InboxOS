@@ -215,6 +215,7 @@ class GoogleWorkspaceClient:
             subject = f"Re: {subject}"
 
         message = EmailMessage()
+        message["From"] = account_email
         message["To"] = recipient
         message["Subject"] = subject
 
@@ -486,7 +487,7 @@ class GoogleWorkspaceClient:
 
         html = self._find_body_part(payload, "text/html")
         if html:
-            text = re.sub(r"<br\\s*/?>", "\n", html, flags=re.IGNORECASE)
+            text = re.sub(r"<br\s*/?>", "\n", html, flags=re.IGNORECASE)
             text = re.sub(r"</(p|div|li|tr|h[1-6])>", "\n", text, flags=re.IGNORECASE)
             text = re.sub(r"<[^>]+>", "", text)
             text = unescape(text)
