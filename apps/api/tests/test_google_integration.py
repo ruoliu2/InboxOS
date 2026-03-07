@@ -747,6 +747,88 @@ def test_google_client_collects_cid_inline_assets_from_attachment_parts(monkeypa
     ]
 
 
+def test_google_client_skips_inline_assets_when_attachment_fetch_fails(monkeypatch):
+    google_client = get_google_workspace_client()
+    html = '<div><img src="cid:hero.png" alt="Hero"></div>'
+
+    def fake_request(method: str, url: str, **kwargs):
+        if url.endswith("/messages/message-inline/attachments/att-inline"):
+            raise GoogleAPIError(
+                "attachment missing",
+                upstream_status_code=404,
+                app_status_code=404,
+            )
+        raise AssertionError(f"Unexpected request: {method} {url}")
+
+    monkeypatch.setattr(google_client, "_request", fake_request)
+
+    message = google_client._parse_message(
+        "access-token",
+        {
+            "id": "message-inline",
+            "internalDate": str(int(datetime.now(UTC).timestamp() * 1000)),
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": "Founder <founder@example.com>"},
+                ],
+                "mimeType": "multipart/related",
+                "parts": [
+                    {
+                        "mimeType": "text/html",
+                        "body": {
+                            "data": base64.urlsafe_b64encode(
+                                html.encode("utf-8")
+                            ).decode("utf-8")
+                        },
+                    },
+                    {
+                        "mimeType": "image/png",
+                        "headers": [
+                            {"name": "Content-ID", "value": "<hero.png>"},
+                        ],
+                        "body": {
+                            "attachmentId": "att-inline",
+                        },
+                    },
+                ],
+            },
+        },
+    )
+
+    assert message.body_html == html
+    assert message.body == ""
+    assert message.inline_assets == []
+
+
+def test_google_client_iterates_deeply_nested_parts_without_recursion():
+    google_client = get_google_workspace_client()
+    deepest_html = "<div>nested</div>"
+    payload: dict[str, object] = {
+        "mimeType": "multipart/related",
+        "parts": [],
+    }
+    current = payload
+    for _ in range(1500):
+        child: dict[str, object] = {
+            "mimeType": "multipart/related",
+            "parts": [],
+        }
+        current["parts"] = [child]
+        current = child
+    current["parts"] = [
+        {
+            "mimeType": "text/html",
+            "body": {
+                "data": base64.urlsafe_b64encode(deepest_html.encode("utf-8")).decode(
+                    "utf-8"
+                )
+            },
+        }
+    ]
+
+    assert google_client._find_body_part(payload, "text/html") == deepest_html
+
+
 def test_calendar_route_preserves_explicit_time_window(client, monkeypatch):
     auth_store = get_auth_store()
     session = build_session()

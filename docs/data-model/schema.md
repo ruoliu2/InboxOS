@@ -16,13 +16,6 @@ This document summarizes the key live data models in the current MVP.
 - `open`
 - `completed`
 
-### `SyncStatus`
-
-- `idle`
-- `running`
-- `completed`
-- `failed`
-
 ## Thread Models
 
 ### `ThreadMessage`
@@ -45,6 +38,14 @@ Fields:
 - `last_message_at`
 - `action_states`
 
+### `ThreadSummaryPage`
+
+Fields:
+
+- `threads`
+- `next_page_token`
+- `has_more`
+
 ### `ThreadAnalysis`
 
 Fields:
@@ -63,6 +64,21 @@ Fields:
 
 - `messages`
 - `analysis`
+
+### `ReplyToThreadRequest`
+
+Fields:
+
+- `body`
+- `mute_thread`
+
+### `ReplyToThreadResponse`
+
+Fields:
+
+- `thread`
+- `sent_message`
+- `muted`
 
 ## Task Models
 
@@ -88,34 +104,6 @@ Fields:
 - `created_at`
 - `completed_at`
 
-## Sync Models
-
-### `SyncStartRequest`
-
-Fields:
-
-- `account_email`
-- `force`
-
-### `SyncStartResponse`
-
-Fields:
-
-- `sync_id`
-- `status`
-- `imported_threads`
-- `started_at`
-
-### `SyncStatusResponse`
-
-Fields:
-
-- `sync_id`
-- `status`
-- `imported_threads`
-- `updated_at`
-- `last_error`
-
 ## Auth Models
 
 ### `AuthStartResponse`
@@ -126,21 +114,22 @@ Fields:
 - `authorization_url`
 - `state`
 
-### `AuthCallbackResponse`
+### `AuthSessionResponse`
 
 Fields:
 
+- `authenticated`
 - `provider`
-- `connected`
 - `account_email`
-- `message`
+- `account_name`
+- `account_picture`
 
 ## Storage Model
 
 The current backend store keeps:
 
-- threads
 - tasks
-- sync status
+- auth sessions and OAuth state in SQLite at `SESSION_DB_PATH`
+- Gmail thread summary pages and opened thread detail in SQLite at `GMAIL_CACHE_DB_PATH`
 
-The store is in-memory, so data resets when the backend process restarts.
+Task data remains in-memory, so it resets when the backend process restarts.

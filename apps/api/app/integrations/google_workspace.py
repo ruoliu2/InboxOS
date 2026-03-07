@@ -78,7 +78,7 @@ class GoogleWorkspaceClient:
         query = urlencode(
             {
                 "client_id": self.settings.google_client_id,
-                "redirect_uri": self.settings.google_redirect_uri,
+                "redirect_uri": self.settings.resolved_google_redirect_uri,
                 "response_type": "code",
                 "scope": " ".join(
                     [
@@ -106,7 +106,7 @@ class GoogleWorkspaceClient:
                 "client_secret": self.settings.google_client_secret,
                 "code": code,
                 "grant_type": "authorization_code",
-                "redirect_uri": self.settings.google_redirect_uri,
+                "redirect_uri": self.settings.resolved_google_redirect_uri,
             },
         )
         return self._parse_token_bundle(payload)
@@ -552,17 +552,15 @@ class GoogleWorkspaceClient:
         return ""
 
     def _find_body_part(self, payload: dict[str, Any], mime_type: str) -> str:
-        current_mime = str(payload.get("mimeType") or "")
-        if current_mime == mime_type:
-            encoded = str(payload.get("body", {}).get("data") or "")
+        for part in self._iter_message_parts(payload):
+            current_mime = str(part.get("mimeType") or "")
+            if current_mime != mime_type:
+                continue
+
+            encoded = str(part.get("body", {}).get("data") or "")
             decoded = self._decode_base64url(encoded)
             if decoded:
                 return decoded.strip()
-
-        for part in payload.get("parts", []) or []:
-            found = self._find_body_part(part, mime_type)
-            if found:
-                return found
 
         return ""
 
@@ -609,10 +607,21 @@ class GoogleWorkspaceClient:
         return assets
 
     def _iter_message_parts(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
-        parts = [payload]
-        for part in payload.get("parts", []) or []:
-            if isinstance(part, dict):
-                parts.extend(self._iter_message_parts(part))
+        parts: list[dict[str, Any]] = []
+        stack: list[dict[str, Any]] = [payload]
+
+        while stack:
+            part = stack.pop()
+            parts.append(part)
+
+            children = part.get("parts", []) or []
+            if not isinstance(children, list):
+                continue
+
+            for child in reversed(children):
+                if isinstance(child, dict):
+                    stack.append(child)
+
         return parts
 
     def _read_part_bytes(
@@ -625,7 +634,6 @@ class GoogleWorkspaceClient:
         if encoded:
             return self._decode_base64url_bytes(encoded)
 
-        attachment_id = str(body.get("attachmentId") or "").strip()
         attachment_id = str(body.get("attachmentId") or "").strip()
         if not attachment_id:
             return b""
