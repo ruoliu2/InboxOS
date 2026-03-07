@@ -26,6 +26,7 @@ class ThreadSummaryPage(BaseModel):
     threads: list[ThreadSummary] = Field(default_factory=list)
     next_page_token: str | None = None
     has_more: bool = False
+    total_count: int | None = None
 
 
 class MailboxKey(StrEnum):

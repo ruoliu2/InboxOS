@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -20,6 +21,7 @@ from app.services.dependencies import (
     get_google_workspace_client,
 )
 from app.storage.auth_store import AuthSessionRecord
+from app.storage.mailbox_cache import GmailMailboxCache
 
 
 def build_session(**overrides: object) -> AuthSessionRecord:
@@ -393,6 +395,7 @@ def test_gmail_and_calendar_routes_use_google_client(client, monkeypatch):
             ],
             next_page_token="next-page",
             has_more=True,
+            total_count=41,
         ),
     )
     monkeypatch.setattr(
@@ -437,6 +440,7 @@ def test_gmail_and_calendar_routes_use_google_client(client, monkeypatch):
     assert threads_response.status_code == 200
     assert threads_response.json()["threads"][0]["id"] == "gmail-thread-1"
     assert threads_response.json()["next_page_token"] == "next-page"
+    assert threads_response.json()["total_count"] == 41
 
     thread_response = client.get("/gmail/threads/gmail-thread-1")
     assert thread_response.status_code == 200
@@ -469,6 +473,7 @@ def test_gmail_route_returns_cached_first_page_before_refresh(client, monkeypatc
             ],
             next_page_token="cached-next",
             has_more=True,
+            total_count=17,
         ),
         page_key=None,
     )
@@ -493,6 +498,51 @@ def test_gmail_route_returns_cached_first_page_before_refresh(client, monkeypatc
     assert response.status_code == 200
     assert response.json()["threads"][0]["id"] == "cached-thread-1"
     assert response.json()["next_page_token"] == "cached-next"
+    assert response.json()["total_count"] == 17
+
+
+def test_gmail_route_returns_cached_empty_first_page_with_total_count(
+    client, monkeypatch
+):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+
+    cache = get_gmail_mailbox_cache()
+    cache.store_thread_page(
+        session.account_email,
+        mailbox_key="inbox",
+        unread_only=False,
+        page=ThreadSummaryPage(
+            threads=[],
+            next_page_token=None,
+            has_more=False,
+            total_count=0,
+        ),
+        page_key=None,
+    )
+
+    google_client = get_google_workspace_client()
+
+    def fail_live_fetch(
+        access_token: str,
+        *,
+        max_results: int = 20,
+        page_token: str | None = None,
+        mailbox=None,
+        unread_only: bool = False,
+        query: str | None = None,
+    ) -> ThreadSummaryPage:
+        raise RuntimeError("live fetch should not block cached startup")
+
+    monkeypatch.setattr(google_client, "list_gmail_threads", fail_live_fetch)
+
+    response = client.get("/gmail/threads")
+
+    assert response.status_code == 200
+    assert response.json()["threads"] == []
+    assert response.json()["total_count"] == 0
 
 
 def test_gmail_route_forwards_pagination_options(client, monkeypatch):
@@ -753,6 +803,7 @@ def test_google_client_lists_thread_summaries_without_full_thread_hydration(
             return {
                 "threads": [{"id": "thread-1"}],
                 "nextPageToken": "next-page",
+                "resultSizeEstimate": 37,
             }
         if url.endswith("/threads/thread-1"):
             return summary_payloads["thread-1"]
@@ -771,9 +822,113 @@ def test_google_client_lists_thread_summaries_without_full_thread_hydration(
 
     assert page.next_page_token == "next-page"
     assert page.has_more is True
+    assert page.total_count == 37
     assert page.threads[0].id == "thread-1"
     assert page.threads[0].subject == "First subject"
     assert page.threads[0].participants[0] == "founder@example.com"
+
+
+def test_google_client_returns_total_count_for_empty_thread_page(monkeypatch):
+    google_client = get_google_workspace_client()
+
+    def fake_request(method: str, url: str, **kwargs):
+        if url.endswith("/threads"):
+            return {
+                "threads": [],
+                "resultSizeEstimate": 0,
+            }
+        raise AssertionError(f"Unexpected request: {method} {url}")
+
+    monkeypatch.setattr(google_client, "_request", fake_request)
+
+    page = google_client.list_gmail_threads("access-token", max_results=20)
+
+    assert page.threads == []
+    assert page.has_more is False
+    assert page.next_page_token is None
+    assert page.total_count == 0
+
+
+def test_gmail_mailbox_cache_round_trips_total_count_for_empty_page(tmp_path):
+    cache = GmailMailboxCache(str(tmp_path / "gmail_mailbox_cache.sqlite3"))
+
+    cache.store_thread_page(
+        "user@gmail.com",
+        mailbox_key="inbox",
+        unread_only=False,
+        page=ThreadSummaryPage(
+            threads=[],
+            next_page_token=None,
+            has_more=False,
+            total_count=0,
+        ),
+        page_key=None,
+    )
+
+    cached_page = cache.get_thread_page(
+        "user@gmail.com",
+        mailbox_key="inbox",
+        unread_only=False,
+        page_key=None,
+    )
+
+    assert cached_page is not None
+    assert cached_page.threads == []
+    assert cached_page.total_count == 0
+    assert cached_page.has_more is False
+
+
+def test_gmail_mailbox_cache_migrates_existing_page_table(tmp_path):
+    db_path = tmp_path / "legacy_gmail_mailbox_cache.sqlite3"
+
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE gmail_thread_pages (
+                account_email TEXT NOT NULL,
+                mailbox_key TEXT NOT NULL,
+                unread_only INTEGER NOT NULL,
+                query TEXT NOT NULL,
+                page_key TEXT NOT NULL,
+                thread_ids_json TEXT NOT NULL,
+                next_page_token TEXT,
+                has_more INTEGER NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (
+                    account_email,
+                    mailbox_key,
+                    unread_only,
+                    query,
+                    page_key
+                )
+            )
+            """
+        )
+        connection.commit()
+
+    cache = GmailMailboxCache(str(db_path))
+    cache.store_thread_page(
+        "user@gmail.com",
+        mailbox_key="inbox",
+        unread_only=False,
+        page=ThreadSummaryPage(
+            threads=[],
+            next_page_token=None,
+            has_more=False,
+            total_count=12,
+        ),
+        page_key=None,
+    )
+
+    cached_page = cache.get_thread_page(
+        "user@gmail.com",
+        mailbox_key="inbox",
+        unread_only=False,
+        page_key=None,
+    )
+
+    assert cached_page is not None
+    assert cached_page.total_count == 12
 
 
 def test_opening_gmail_thread_updates_detail_cache(client, monkeypatch):

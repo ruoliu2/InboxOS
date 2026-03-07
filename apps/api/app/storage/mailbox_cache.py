@@ -42,7 +42,7 @@ class GmailMailboxCache:
         with self._lock, self._connect() as connection:
             page_row = connection.execute(
                 """
-                SELECT thread_ids_json, next_page_token, has_more
+                SELECT thread_ids_json, next_page_token, has_more, total_count
                 FROM gmail_thread_pages
                 WHERE account_email = ? AND mailbox_key = ? AND unread_only = ?
                   AND query = ? AND page_key = ?
@@ -60,8 +60,15 @@ class GmailMailboxCache:
                 return None
 
             thread_ids = json.loads(page_row["thread_ids_json"])
-            if not isinstance(thread_ids, list) or not thread_ids:
+            if not isinstance(thread_ids, list):
                 return None
+            if not thread_ids:
+                return ThreadSummaryPage(
+                    threads=[],
+                    next_page_token=page_row["next_page_token"],
+                    has_more=bool(page_row["has_more"]),
+                    total_count=page_row["total_count"],
+                )
 
             summaries_by_id: dict[str, ThreadSummary] = {}
             summary_rows = connection.execute(
@@ -88,6 +95,7 @@ class GmailMailboxCache:
                 threads=ordered_threads,
                 next_page_token=page_row["next_page_token"],
                 has_more=bool(page_row["has_more"]),
+                total_count=page_row["total_count"],
             )
 
     def store_thread_page(
@@ -151,13 +159,15 @@ class GmailMailboxCache:
                     thread_ids_json,
                     next_page_token,
                     has_more,
+                    total_count,
                     updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(account_email, mailbox_key, unread_only, query, page_key)
                 DO UPDATE SET
                     thread_ids_json = excluded.thread_ids_json,
                     next_page_token = excluded.next_page_token,
                     has_more = excluded.has_more,
+                    total_count = excluded.total_count,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -169,6 +179,7 @@ class GmailMailboxCache:
                     json.dumps([thread.id for thread in page.threads]),
                     page.next_page_token,
                     int(page.has_more),
+                    page.total_count,
                     updated_at,
                 ),
             )
@@ -283,6 +294,7 @@ class GmailMailboxCache:
             }
             if page_columns and {"mailbox_key", "unread_only"} - page_columns:
                 connection.execute("DROP TABLE IF EXISTS gmail_thread_pages")
+                page_columns = set()
 
             connection.execute(
                 """
@@ -310,6 +322,7 @@ class GmailMailboxCache:
                     thread_ids_json TEXT NOT NULL,
                     next_page_token TEXT,
                     has_more INTEGER NOT NULL,
+                    total_count INTEGER,
                     updated_at TEXT NOT NULL,
                     PRIMARY KEY (
                         account_email,
@@ -321,6 +334,10 @@ class GmailMailboxCache:
                 )
                 """
             )
+            if page_columns and "total_count" not in page_columns:
+                connection.execute(
+                    "ALTER TABLE gmail_thread_pages ADD COLUMN total_count INTEGER"
+                )
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS gmail_thread_details (

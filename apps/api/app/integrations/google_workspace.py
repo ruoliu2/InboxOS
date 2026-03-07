@@ -177,16 +177,18 @@ class GoogleWorkspaceClient:
             access_token=access_token,
             params=params,
         )
+        next_page_token = str(payload.get("nextPageToken") or "").strip() or None
+        total_count = self._parse_result_size_estimate(payload)
         thread_ids = [
             str(item.get("id") or "").strip()
             for item in payload.get("threads", [])
             if str(item.get("id") or "").strip()
         ]
-        next_page_token = str(payload.get("nextPageToken") or "").strip() or None
         if not thread_ids:
             return ThreadSummaryPage(
                 next_page_token=next_page_token,
                 has_more=next_page_token is not None,
+                total_count=total_count,
             )
 
         fetch_summary = partial(self.get_gmail_thread_summary, access_token)
@@ -197,6 +199,7 @@ class GoogleWorkspaceClient:
             threads=threads,
             next_page_token=next_page_token,
             has_more=next_page_token is not None,
+            total_count=total_count,
         )
 
     def get_gmail_thread_summary(
@@ -632,6 +635,15 @@ class GoogleWorkspaceClient:
             if name and value and name not in values:
                 values[name] = value
         return values
+
+    def _parse_result_size_estimate(self, payload: dict[str, Any]) -> int | None:
+        raw_value = payload.get("resultSizeEstimate")
+        if raw_value is None:
+            return None
+        try:
+            return int(raw_value)
+        except (TypeError, ValueError):
+            return None
 
     def _thread_subject(self, messages: list[dict[str, Any]]) -> str:
         for item in messages:

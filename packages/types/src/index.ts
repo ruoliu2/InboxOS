@@ -22,6 +22,7 @@ export type ThreadSummaryPage = {
   threads: ThreadSummary[];
   next_page_token: string | null;
   has_more: boolean;
+  total_count: number | null;
 };
 
 export type ThreadMessage = {

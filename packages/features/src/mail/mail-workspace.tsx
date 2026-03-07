@@ -190,6 +190,7 @@ function parseRecipients(value: string): string[] {
 export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   const [session, setSession] = useState<AuthSessionResponse | null>(null);
   const [sessionChecked, setSessionChecked] = useState(false);
+  const [mailboxCount, setMailboxCount] = useState<number | null>(null);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(
     initialThreadId ?? null,
@@ -257,6 +258,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
         setThreads((current) =>
           reset ? page.threads : mergeThreadSummaries(current, page.threads),
         );
+        setMailboxCount(page.total_count);
         setNextPageToken(page.next_page_token);
         setHasMore(page.has_more);
         if (reset && page.threads.length === 0) {
@@ -265,6 +267,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
       } catch (loadError) {
         setError((loadError as Error).message);
         if (reset) {
+          setMailboxCount(null);
           setThreads([]);
           setNextPageToken(null);
           setHasMore(false);
@@ -591,7 +594,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
 
           <div className="mail-folder-group">
             {primaryFolders.map((folder) => {
-              const count = folder.key === mailbox ? threads.length : 0;
+              const count = folder.key === mailbox ? mailboxCount : 0;
               return (
                 <button
                   key={folder.key}
@@ -603,7 +606,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
                     <folder.icon size={15} />
                     {folder.label}
                   </span>
-                  <span className="folder-count">{count || ""}</span>
+                  <span className="folder-count">{count ?? ""}</span>
                 </button>
               );
             })}
