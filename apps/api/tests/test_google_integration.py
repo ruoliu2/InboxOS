@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 
+import app.storage.store as store_module
 from app.integrations.google_workspace import GoogleAPIError
 from app.schemas.calendar import CalendarEvent
 from app.schemas.common import ActionState
@@ -18,7 +19,7 @@ from app.services.dependencies import (
     get_gmail_mailbox_cache,
     get_google_workspace_client,
 )
-from app.storage.store import AuthSessionRecord, get_store
+from app.storage.store import AuthSessionRecord
 
 
 def build_session() -> AuthSessionRecord:
@@ -140,7 +141,7 @@ def test_google_client_normalizes_disabled_gmail_api_errors(monkeypatch):
 
 
 def test_gmail_route_returns_503_for_disabled_google_service(client, monkeypatch):
-    store = get_store()
+    store = store_module.get_store()
     session = build_session()
     store.upsert_session(session)
     client.cookies.set("inboxos_session", session.session_id)
@@ -169,7 +170,7 @@ def test_gmail_route_returns_503_for_disabled_google_service(client, monkeypatch
 
 
 def test_gmail_and_calendar_routes_use_google_client(client, monkeypatch):
-    store = get_store()
+    store = store_module.get_store()
     session = build_session()
     store.upsert_session(session)
     client.cookies.set("inboxos_session", session.session_id)
@@ -246,7 +247,7 @@ def test_gmail_and_calendar_routes_use_google_client(client, monkeypatch):
 
 
 def test_gmail_route_returns_cached_first_page_before_refresh(client, monkeypatch):
-    store = get_store()
+    store = store_module.get_store()
     session = build_session()
     store.upsert_session(session)
     client.cookies.set("inboxos_session", session.session_id)
@@ -292,7 +293,7 @@ def test_gmail_route_returns_cached_first_page_before_refresh(client, monkeypatc
 
 
 def test_gmail_route_forwards_pagination_options(client, monkeypatch):
-    store = get_store()
+    store = store_module.get_store()
     session = build_session()
     store.upsert_session(session)
     client.cookies.set("inboxos_session", session.session_id)
@@ -411,7 +412,7 @@ def test_google_client_converts_html_breaks_to_newlines():
 
 
 def test_calendar_route_preserves_explicit_time_window(client, monkeypatch):
-    store = get_store()
+    store = store_module.get_store()
     session = build_session()
     store.upsert_session(session)
     client.cookies.set("inboxos_session", session.session_id)
@@ -501,7 +502,7 @@ def test_google_client_lists_thread_summaries_without_full_thread_hydration(
 
 
 def test_opening_gmail_thread_updates_detail_cache(client, monkeypatch):
-    store = get_store()
+    store = store_module.get_store()
     session = build_session()
     store.upsert_session(session)
     client.cookies.set("inboxos_session", session.session_id)
