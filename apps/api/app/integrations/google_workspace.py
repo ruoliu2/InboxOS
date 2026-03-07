@@ -626,14 +626,18 @@ class GoogleWorkspaceClient:
             return self._decode_base64url_bytes(encoded)
 
         attachment_id = str(body.get("attachmentId") or "").strip()
+        attachment_id = str(body.get("attachmentId") or "").strip()
         if not attachment_id:
             return b""
 
-        attachment = self._get_gmail_attachment_payload(
-            access_token,
-            message_id,
-            attachment_id,
-        )
+        try:
+            attachment = self._get_gmail_attachment_payload(
+                access_token,
+                message_id,
+                attachment_id,
+            )
+        except (GoogleAPIError, RuntimeError):
+            return b""
         return self._decode_base64url_bytes(str(attachment.get("data") or ""))
 
     def _build_data_url(self, mime_type: str, data: bytes) -> str:
