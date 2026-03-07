@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 
+from app.core.config import get_settings
 from app.integrations.google_workspace import GoogleAPIError
 from app.schemas.calendar import CalendarEvent
 from app.schemas.common import ActionState
@@ -13,30 +14,35 @@ from app.schemas.thread import (
     ThreadSummaryPage,
 )
 from app.services.dependencies import (
+    get_auth_service,
+    get_auth_store,
     get_gmail_mailbox_cache,
     get_google_workspace_client,
 )
-from app.storage.store import AuthSessionRecord, get_store
+from app.storage.auth_store import AuthSessionRecord
 
 
-def build_session() -> AuthSessionRecord:
+def build_session(**overrides: object) -> AuthSessionRecord:
     now = datetime.now(UTC)
-    return AuthSessionRecord(
-        session_id="session-1",
-        provider="google",
-        account_email="user@gmail.com",
-        account_name="Inbox User",
-        account_picture=None,
-        access_token="access-token",
-        refresh_token="refresh-token",
-        scope="email profile",
-        expires_at=now + timedelta(hours=1),
-        created_at=now,
-        updated_at=now,
-    )
+    values: dict[str, object] = {
+        "session_id": "session-1",
+        "provider": "google",
+        "account_email": "user@gmail.com",
+        "account_name": "Inbox User",
+        "account_picture": None,
+        "access_token": "access-token",
+        "refresh_token": "refresh-token",
+        "scope": "email profile",
+        "expires_at": now + timedelta(hours=1),
+        "session_expires_at": now + timedelta(days=30),
+        "created_at": now,
+        "updated_at": now,
+    }
+    values.update(overrides)
+    return AuthSessionRecord(**values)
 
 
-def test_google_callback_sets_session_cookie_and_redirects(client, monkeypatch):
+def mock_google_login(monkeypatch: pytest.MonkeyPatch) -> None:
     google_client = get_google_workspace_client()
 
     monkeypatch.setattr(
@@ -72,6 +78,18 @@ def test_google_callback_sets_session_cookie_and_redirects(client, monkeypatch):
         )(),
     )
 
+
+def restart_auth_dependencies() -> None:
+    get_auth_service.cache_clear()
+    get_auth_store.cache_clear()
+
+
+def test_google_callback_sets_persistent_session_cookie_and_redirects(
+    client,
+    monkeypatch,
+):
+    mock_google_login(monkeypatch)
+
     start_response = client.get("/auth/google/start?redirect_to=/calendar")
     assert start_response.status_code == 200
     state = start_response.json()["state"]
@@ -82,12 +100,196 @@ def test_google_callback_sets_session_cookie_and_redirects(client, monkeypatch):
     )
     assert callback_response.status_code == 303
     assert callback_response.headers["location"] == "http://localhost:3000/calendar"
-    assert "inboxos_session=" in callback_response.headers["set-cookie"]
+    cookie_header = callback_response.headers["set-cookie"]
+    assert "inboxos_session=" in cookie_header
+    assert f"Max-Age={get_settings().session_ttl_seconds}" in cookie_header
+    assert "expires=" in cookie_header.lower()
+
+    session_id = client.cookies.get(get_settings().session_cookie_name)
+    assert session_id is not None
+    assert get_auth_store().get_session(session_id) is not None
+
+
+def test_auth_session_survives_service_restart(client, monkeypatch):
+    mock_google_login(monkeypatch)
+
+    start_response = client.get("/auth/google/start?redirect_to=/calendar")
+    state = start_response.json()["state"]
+    client.get(
+        f"/auth/google/callback?code=test-code&state={state}",
+        follow_redirects=False,
+    )
+
+    restart_auth_dependencies()
 
     session_response = client.get("/auth/session")
     assert session_response.status_code == 200
     assert session_response.json()["authenticated"] is True
     assert session_response.json()["account_email"] == "user@gmail.com"
+
+
+def test_google_oauth_state_survives_service_restart(client, monkeypatch):
+    mock_google_login(monkeypatch)
+
+    start_response = client.get("/auth/google/start?redirect_to=/calendar")
+    state = start_response.json()["state"]
+
+    restart_auth_dependencies()
+
+    callback_response = client.get(
+        f"/auth/google/callback?code=test-code&state={state}",
+        follow_redirects=False,
+    )
+    assert callback_response.status_code == 303
+    assert callback_response.headers["location"] == "http://localhost:3000/calendar"
+
+
+def test_auth_session_route_reissues_cookie_and_extends_session_expiry(client):
+    auth_store = get_auth_store()
+    session = build_session(session_expires_at=datetime.now(UTC) + timedelta(minutes=5))
+    auth_store.upsert_session(session)
+    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+
+    response = client.get("/auth/session")
+
+    assert response.status_code == 200
+    assert response.json()["authenticated"] is True
+    assert (
+        f"Max-Age={get_settings().session_ttl_seconds}"
+        in response.headers["set-cookie"]
+    )
+    refreshed_session = auth_store.get_session(session.session_id)
+    assert refreshed_session is not None
+    assert (
+        refreshed_session.session_expires_at
+        > session.session_expires_at + timedelta(days=20)
+    )
+
+
+def test_expired_app_session_returns_unauthenticated_and_is_deleted(client):
+    auth_store = get_auth_store()
+    session = build_session(
+        session_expires_at=datetime.now(UTC) - timedelta(minutes=1),
+    )
+    auth_store.upsert_session(session)
+    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+
+    response = client.get("/auth/session")
+
+    assert response.status_code == 200
+    assert response.json()["authenticated"] is False
+    assert auth_store.get_session(session.session_id) is None
+
+
+def test_expired_google_access_token_refreshes_session(client, monkeypatch):
+    auth_store = get_auth_store()
+    session = build_session(
+        access_token="stale-access-token",
+        expires_at=datetime.now(UTC) - timedelta(minutes=1),
+    )
+    auth_store.upsert_session(session)
+    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+
+    google_client = get_google_workspace_client()
+    monkeypatch.setattr(
+        google_client,
+        "refresh_access_token",
+        lambda refresh_token: type(
+            "TokenBundle",
+            (),
+            {
+                "access_token": "fresh-access-token",
+                "refresh_token": "fresh-refresh-token",
+                "scope": "email profile",
+                "expires_at": datetime.now(UTC) + timedelta(hours=1),
+            },
+        )(),
+    )
+
+    response = client.get("/auth/session")
+
+    assert response.status_code == 200
+    assert response.json()["authenticated"] is True
+    refreshed_session = auth_store.get_session(session.session_id)
+    assert refreshed_session is not None
+    assert refreshed_session.access_token == "fresh-access-token"
+    assert refreshed_session.refresh_token == "fresh-refresh-token"
+
+
+def test_missing_refresh_token_deletes_expired_session(client):
+    auth_store = get_auth_store()
+    session = build_session(
+        refresh_token=None,
+        expires_at=datetime.now(UTC) - timedelta(minutes=1),
+    )
+    auth_store.upsert_session(session)
+    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+
+    response = client.get("/auth/session")
+
+    assert response.status_code == 200
+    assert response.json()["authenticated"] is False
+    assert auth_store.get_session(session.session_id) is None
+
+
+def test_refresh_failure_returns_401_and_deletes_session(client, monkeypatch):
+    auth_store = get_auth_store()
+    session = build_session(expires_at=datetime.now(UTC) - timedelta(minutes=1))
+    auth_store.upsert_session(session)
+    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+
+    google_client = get_google_workspace_client()
+    monkeypatch.setattr(
+        google_client,
+        "refresh_access_token",
+        lambda refresh_token: (_ for _ in ()).throw(RuntimeError("refresh failed")),
+    )
+
+    response = client.get("/gmail/threads")
+
+    assert response.status_code == 401
+    assert auth_store.get_session(session.session_id) is None
+
+
+def test_logout_removes_persisted_session_and_clears_cookie(client):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+
+    response = client.post("/auth/logout")
+
+    assert response.status_code == 204
+    assert auth_store.get_session(session.session_id) is None
+    assert "expires=" in response.headers["set-cookie"].lower()
+    follow_up = client.get("/auth/session")
+    assert follow_up.json()["authenticated"] is False
+
+
+def test_protected_routes_reissue_cookie(client, monkeypatch):
+    auth_store = get_auth_store()
+    session = build_session(session_expires_at=datetime.now(UTC) + timedelta(minutes=5))
+    auth_store.upsert_session(session)
+    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+
+    google_client = get_google_workspace_client()
+    monkeypatch.setattr(
+        google_client,
+        "list_gmail_threads",
+        lambda access_token, **_: ThreadSummaryPage(
+            threads=[],
+            next_page_token=None,
+            has_more=False,
+        ),
+    )
+
+    response = client.get("/gmail/threads")
+
+    assert response.status_code == 200
+    assert (
+        f"Max-Age={get_settings().session_ttl_seconds}"
+        in response.headers["set-cookie"]
+    )
 
 
 def test_gmail_routes_require_session(client):
@@ -138,10 +340,10 @@ def test_google_client_normalizes_disabled_gmail_api_errors(monkeypatch):
 
 
 def test_gmail_route_returns_503_for_disabled_google_service(client, monkeypatch):
-    store = get_store()
+    auth_store = get_auth_store()
     session = build_session()
-    store.upsert_session(session)
-    client.cookies.set("inboxos_session", session.session_id)
+    auth_store.upsert_session(session)
+    client.cookies.set(get_settings().session_cookie_name, session.session_id)
 
     google_client = get_google_workspace_client()
 
@@ -167,10 +369,10 @@ def test_gmail_route_returns_503_for_disabled_google_service(client, monkeypatch
 
 
 def test_gmail_and_calendar_routes_use_google_client(client, monkeypatch):
-    store = get_store()
+    auth_store = get_auth_store()
     session = build_session()
-    store.upsert_session(session)
-    client.cookies.set("inboxos_session", session.session_id)
+    auth_store.upsert_session(session)
+    client.cookies.set(get_settings().session_cookie_name, session.session_id)
 
     google_client = get_google_workspace_client()
     monkeypatch.setattr(
@@ -244,10 +446,10 @@ def test_gmail_and_calendar_routes_use_google_client(client, monkeypatch):
 
 
 def test_gmail_route_returns_cached_first_page_before_refresh(client, monkeypatch):
-    store = get_store()
+    auth_store = get_auth_store()
     session = build_session()
-    store.upsert_session(session)
-    client.cookies.set("inboxos_session", session.session_id)
+    auth_store.upsert_session(session)
+    client.cookies.set(get_settings().session_cookie_name, session.session_id)
 
     cache = get_gmail_mailbox_cache()
     cache.store_thread_page(
@@ -290,10 +492,10 @@ def test_gmail_route_returns_cached_first_page_before_refresh(client, monkeypatc
 
 
 def test_gmail_route_forwards_pagination_options(client, monkeypatch):
-    store = get_store()
+    auth_store = get_auth_store()
     session = build_session()
-    store.upsert_session(session)
-    client.cookies.set("inboxos_session", session.session_id)
+    auth_store.upsert_session(session)
+    client.cookies.set(get_settings().session_cookie_name, session.session_id)
 
     google_client = get_google_workspace_client()
     captured: dict[str, object] = {}
@@ -382,10 +584,10 @@ def test_google_client_lists_thread_summaries_without_full_thread_hydration(
 
 
 def test_opening_gmail_thread_updates_detail_cache(client, monkeypatch):
-    store = get_store()
+    auth_store = get_auth_store()
     session = build_session()
-    store.upsert_session(session)
-    client.cookies.set("inboxos_session", session.session_id)
+    auth_store.upsert_session(session)
+    client.cookies.set(get_settings().session_cookie_name, session.session_id)
 
     google_client = get_google_workspace_client()
     thread = ThreadDetail(

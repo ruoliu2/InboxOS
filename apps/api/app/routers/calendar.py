@@ -8,7 +8,7 @@ from app.services.dependencies import (
     get_current_auth_session,
     get_google_workspace_client,
 )
-from app.storage.store import AuthSessionRecord
+from app.storage.auth_store import AuthSessionRecord
 
 router = APIRouter()
 
