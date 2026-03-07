@@ -7,13 +7,6 @@ class AuthStartResponse(BaseModel):
     state: str
 
 
-class AuthCallbackResponse(BaseModel):
-    provider: str
-    connected: bool
-    account_email: str
-    message: str
-
-
 class AuthSessionResponse(BaseModel):
     authenticated: bool
     provider: str | None = None

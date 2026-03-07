@@ -38,17 +38,18 @@ Primary file: `packages/features/src/mail/mail-workspace.tsx`
 
 Responsibilities:
 
-- load thread summaries from the backend
-- load selected thread detail in the reading pane
-- fall back to `packages/lib/src/mock-data.ts` if the API is unavailable or returns no threads
+- load the first page of thread summaries from the backend
+- load selected thread detail in the reading pane on demand
 - filter list between `all` and `unread`
-- send replies through `POST /threads/{thread_id}/reply`
+- keep search limited to the thread summaries already loaded in the client
+- load older inbox pages with infinite scroll
+- send replies through `POST /gmail/threads/{thread_id}/reply`
 - update the selected thread and summary list in place after reply
 
 Implementation notes:
 
 - unread is derived from action states rather than a mailbox unread flag
-- demo mode is driven by API failure or empty API results
+- the current live mail flow does not use mock thread data
 - real API mode uses the backend response as the source of truth after reply
 
 ## Tasks Surface
@@ -71,7 +72,8 @@ Responsibilities:
 
 - render month, week, and day calendar views
 - keep a macOS-style segmented control for switching views
-- show mock events for display fidelity
+- load Google Calendar events through the backend
+- show backend load errors inline if the fetch fails
 
 ## Auth Surface
 
@@ -80,12 +82,13 @@ Primary file: `packages/features/src/auth/auth-view.tsx`
 Responsibilities:
 
 - trigger Google auth start flow through the backend
+- restore the current session through the backend
 - present the login and connection entry UI
 
 ## Shared Client Modules
 
 - `packages/lib/src/api.ts`: API client used by the feature workspaces
 - `packages/lib/src/format.ts`: display helpers
-- `packages/lib/src/mock-data.ts`: demo fallback data
+- `packages/lib/src/mock-data.ts`: demo fallback task data
 - `packages/types/src/index.ts`: shared frontend data types
 - `packages/config/src/web.ts`: API base URL config

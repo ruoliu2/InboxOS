@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 
 from app.schemas.common import TaskStatus
 from app.schemas.task import CreateTaskRequest, TaskItem
-from app.schemas.thread import ThreadDetail
 from app.services.id_factory import new_id
 from app.storage.task_store import TaskStore
 
@@ -40,32 +39,3 @@ class TaskService:
         task.completed_at = datetime.now(UTC)
         self.store.upsert_task(account_email, task)
         return task
-
-    def create_tasks_for_thread(
-        self, account_email: str, thread: ThreadDetail
-    ) -> list[TaskItem]:
-        if thread.analysis is None:
-            return []
-
-        created: list[TaskItem] = []
-        existing_titles = self.store.list_open_titles_for_thread(
-            account_email,
-            thread.id,
-        )
-
-        for deadline in thread.analysis.deadlines:
-            title = f"{thread.subject} (deadline {deadline})"
-            if title in existing_titles:
-                continue
-            task = self.create_task(
-                account_email,
-                CreateTaskRequest(
-                    title=title,
-                    thread_id=thread.id,
-                    category="deadline",
-                ),
-            )
-            created.append(task)
-            existing_titles.add(title)
-
-        return created

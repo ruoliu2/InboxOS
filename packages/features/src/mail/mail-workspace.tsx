@@ -228,69 +228,80 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   const unreadOnly = listTab === "unread";
   const activeHeading = mailboxHeading(mailbox);
 
-  const loadThreads = useCallback(
-    async (reset: boolean) => {
-      if (!session?.authenticated) {
-        return;
-      }
+  const loadInitialThreads = useCallback(async () => {
+    if (!session?.authenticated) {
+      return;
+    }
 
-      const pageToken = reset ? null : nextPageToken;
-      if (!reset && (!pageToken || loadingList || loadingMore)) {
-        return;
-      }
+    setLoadingList(true);
+    setError(null);
+    setNotice(null);
 
-      if (reset) {
-        setLoadingList(true);
-      } else {
-        setLoadingMore(true);
+    try {
+      const page = await api.getGmailThreads({
+        page_size: PAGE_SIZE,
+        q: searchQuery || undefined,
+        mailbox,
+        unread_only: unreadOnly,
+      });
+      setThreads(page.threads);
+      setMailboxCount(page.total_count);
+      setNextPageToken(page.next_page_token);
+      setHasMore(page.has_more);
+      if (page.threads.length === 0) {
+        setNotice(`No ${activeHeading.toLowerCase()} threads were found.`);
       }
-      setError(null);
-      setNotice(null);
+    } catch (loadError) {
+      setError((loadError as Error).message);
+      setMailboxCount(null);
+      setThreads([]);
+      setNextPageToken(null);
+      setHasMore(false);
+    } finally {
+      setLoadingList(false);
+    }
+  }, [activeHeading, mailbox, searchQuery, session?.authenticated, unreadOnly]);
 
-      try {
-        const page = await api.getGmailThreads({
-          page_token: pageToken,
-          page_size: PAGE_SIZE,
-          q: searchQuery || undefined,
-          mailbox,
-          unread_only: unreadOnly,
-        });
-        setThreads((current) =>
-          reset ? page.threads : mergeThreadSummaries(current, page.threads),
-        );
-        setMailboxCount(page.total_count);
-        setNextPageToken(page.next_page_token);
-        setHasMore(page.has_more);
-        if (reset && page.threads.length === 0) {
-          setNotice(`No ${activeHeading.toLowerCase()} threads were found.`);
-        }
-      } catch (loadError) {
-        setError((loadError as Error).message);
-        if (reset) {
-          setMailboxCount(null);
-          setThreads([]);
-          setNextPageToken(null);
-          setHasMore(false);
-        }
-      } finally {
-        if (reset) {
-          setLoadingList(false);
-        } else {
-          setLoadingMore(false);
-        }
-      }
-    },
-    [
-      activeHeading,
-      loadingList,
-      loadingMore,
-      mailbox,
-      nextPageToken,
-      searchQuery,
-      session?.authenticated,
-      unreadOnly,
-    ],
-  );
+  const loadMoreThreads = useCallback(async () => {
+    if (
+      !session?.authenticated ||
+      !nextPageToken ||
+      loadingList ||
+      loadingMore
+    ) {
+      return;
+    }
+
+    setLoadingMore(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const page = await api.getGmailThreads({
+        page_token: nextPageToken,
+        page_size: PAGE_SIZE,
+        q: searchQuery || undefined,
+        mailbox,
+        unread_only: unreadOnly,
+      });
+      setThreads((current) => mergeThreadSummaries(current, page.threads));
+      setMailboxCount(page.total_count);
+      setNextPageToken(page.next_page_token);
+      setHasMore(page.has_more);
+    } catch (loadError) {
+      setError((loadError as Error).message);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [
+    loadingList,
+    loadingMore,
+    mailbox,
+    nextPageToken,
+    searchQuery,
+    session?.authenticated,
+    unreadOnly,
+  ]);
 
   useEffect(() => {
     let isMounted = true;
@@ -339,15 +350,8 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     setSelectedThreadId(null);
     setSelectedThread(null);
     setShowMoreMenu(false);
-    void loadThreads(true);
-  }, [
-    loadThreads,
-    mailbox,
-    searchQuery,
-    session?.authenticated,
-    sessionChecked,
-    unreadOnly,
-  ]);
+    void loadInitialThreads();
+  }, [loadInitialThreads, session?.authenticated, sessionChecked]);
 
   useEffect(() => {
     setComposeMode("reply");
@@ -410,7 +414,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
-          void loadThreads(false);
+          void loadMoreThreads();
         }
       },
       {
@@ -423,7 +427,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     return () => {
       observer.disconnect();
     };
-  }, [hasMore, loadThreads, loadingList, loadingMore]);
+  }, [hasMore, loadMoreThreads, loadingList, loadingMore]);
 
   const activeThread =
     selectedThread && selectedThread.id === selectedThreadId
@@ -432,6 +436,71 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
 
   const accountLabel =
     session?.account_name ?? session?.account_email ?? "Google account";
+
+  function focusComposer(mode: ComposeMode) {
+    setComposeMode(mode);
+    setNotice(null);
+    setError(null);
+    window.requestAnimationFrame(() => {
+      composerRef.current?.focus();
+    });
+  }
+
+  const runThreadAction = useCallback(
+    async (action: ThreadActionName) => {
+      if (!selectedThreadId) {
+        return;
+      }
+
+      setActionInFlight(action);
+      setNotice(null);
+      setError(null);
+
+      try {
+        const result = await api.actOnGmailThread(selectedThreadId, action);
+        const shouldClearSelection =
+          action === "delete" ||
+          action === "restore" ||
+          action === "trash" ||
+          (action === "archive" && mailbox === "inbox") ||
+          (action === "junk" && mailbox !== "junk");
+
+        const updatedThread = result.thread;
+        if (updatedThread) {
+          setSelectedThread(updatedThread);
+          setThreads((current) =>
+            mergeThreadSummaries(
+              current,
+              [toThreadSummary(updatedThread)],
+              "prepend",
+            ),
+          );
+        }
+
+        if (shouldClearSelection || result.deleted) {
+          setSelectedThreadId(null);
+          setSelectedThread(null);
+        }
+
+        await loadInitialThreads();
+        setNotice(
+          {
+            archive: "Thread archived.",
+            junk: "Thread moved to junk.",
+            trash: "Thread moved to trash.",
+            delete: "Thread deleted permanently.",
+            restore: "Thread restored to inbox.",
+          }[action],
+        );
+      } catch (actionError) {
+        setError((actionError as Error).message);
+      } finally {
+        setActionInFlight(null);
+        setConfirmState(null);
+      }
+    },
+    [loadInitialThreads, mailbox, selectedThreadId],
+  );
 
   const moreMenuItems = useMemo(() => {
     const items: Array<{
@@ -463,68 +532,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
       });
     }
     return items;
-  }, [mailbox]);
-
-  function focusComposer(mode: ComposeMode) {
-    setComposeMode(mode);
-    setNotice(null);
-    setError(null);
-    window.requestAnimationFrame(() => {
-      composerRef.current?.focus();
-    });
-  }
-
-  async function runThreadAction(action: ThreadActionName) {
-    if (!selectedThreadId) {
-      return;
-    }
-
-    setActionInFlight(action);
-    setNotice(null);
-    setError(null);
-
-    try {
-      const result = await api.actOnGmailThread(selectedThreadId, action);
-      const shouldClearSelection =
-        action === "delete" ||
-        action === "restore" ||
-        action === "trash" ||
-        (action === "archive" && mailbox === "inbox") ||
-        (action === "junk" && mailbox !== "junk");
-
-      if (result.thread) {
-        setSelectedThread(result.thread);
-        setThreads((current) =>
-          mergeThreadSummaries(
-            current,
-            [toThreadSummary(result.thread!)],
-            "prepend",
-          ),
-        );
-      }
-
-      if (shouldClearSelection || result.deleted) {
-        setSelectedThreadId(null);
-        setSelectedThread(null);
-      }
-
-      await loadThreads(true);
-      setNotice(
-        {
-          archive: "Thread archived.",
-          junk: "Thread moved to junk.",
-          trash: "Thread moved to trash.",
-          delete: "Thread deleted permanently.",
-          restore: "Thread restored to inbox.",
-        }[action],
-      );
-    } catch (actionError) {
-      setError((actionError as Error).message);
-    } finally {
-      setActionInFlight(null);
-      setConfirmState(null);
-    }
-  }
+  }, [mailbox, runThreadAction]);
 
   async function sendCompose() {
     if (!selectedThreadId || !activeThread) {

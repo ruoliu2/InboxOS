@@ -52,11 +52,6 @@ class ThreadDetail(ThreadSummary):
     analysis: ThreadAnalysis | None = None
 
 
-class AnalyzeThreadResponse(BaseModel):
-    thread_id: str
-    analysis: ThreadAnalysis
-
-
 class ReplyToThreadRequest(BaseModel):
     body: str = Field(min_length=1)
     mute_thread: bool = False

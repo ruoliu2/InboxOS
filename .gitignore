@@ -49,3 +49,4 @@ bun-debug.log*
 
 # Local source mirror
 /ui/
+.vercel

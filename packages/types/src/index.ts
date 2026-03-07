@@ -89,13 +89,6 @@ export type TaskItem = {
   completed_at: string | null;
 };
 
-export type SyncStartResponse = {
-  sync_id: string;
-  status: string;
-  imported_threads: number;
-  started_at: string;
-};
-
 export type AuthStartResponse = {
   provider: string;
   authorization_url: string;

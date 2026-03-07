@@ -86,7 +86,7 @@ class GoogleWorkspaceClient:
         query = urlencode(
             {
                 "client_id": self.settings.google_client_id,
-                "redirect_uri": self.settings.google_redirect_uri,
+                "redirect_uri": self.settings.resolved_google_redirect_uri,
                 "response_type": "code",
                 "scope": " ".join(
                     [
@@ -114,7 +114,7 @@ class GoogleWorkspaceClient:
                 "client_secret": self.settings.google_client_secret,
                 "code": code,
                 "grant_type": "authorization_code",
-                "redirect_uri": self.settings.google_redirect_uri,
+                "redirect_uri": self.settings.resolved_google_redirect_uri,
             },
         )
         return self._parse_token_bundle(payload)
@@ -232,6 +232,7 @@ class GoogleWorkspaceClient:
             latest_message.get("payload", {}).get("headers", [])
         )
         message = EmailMessage()
+        message["From"] = account_email
 
         if payload.mode == ComposeMode.REPLY:
             recipient = self._resolve_reply_recipient(
@@ -283,14 +284,22 @@ class GoogleWorkspaceClient:
         if payload.mode in (ComposeMode.REPLY, ComposeMode.REPLY_ALL):
             send_payload["threadId"] = thread_id
 
-        self._request(
+        sent_payload = self._request(
             "POST",
             f"{GMAIL_API_BASE}/messages/send",
             access_token=access_token,
             json=send_payload,
         )
 
-        refetched_thread = self.get_gmail_thread(access_token, thread_id)
+        refetched_thread_id = thread_id
+        if payload.mode == ComposeMode.FORWARD:
+            refetched_thread_id = str(sent_payload.get("threadId") or "").strip()
+            if not refetched_thread_id:
+                raise RuntimeError(
+                    "Gmail send response did not include a thread id for the forwarded message."
+                )
+
+        refetched_thread = self.get_gmail_thread(access_token, refetched_thread_id)
         return GmailComposeResult(
             thread=refetched_thread,
             sent_message=refetched_thread.messages[-1],
@@ -320,7 +329,7 @@ class GoogleWorkspaceClient:
         action: str,
     ) -> GmailThreadActionResult:
         if action == "archive":
-            self._modify_gmail_thread(
+            payload = self._modify_gmail_thread(
                 access_token,
                 thread_id,
                 add_label_ids=[],
@@ -328,11 +337,11 @@ class GoogleWorkspaceClient:
             )
             return GmailThreadActionResult(
                 thread_id=thread_id,
-                thread=self.get_gmail_thread(access_token, thread_id),
+                thread=self._parse_thread(payload),
             )
 
         if action == "junk":
-            self._modify_gmail_thread(
+            payload = self._modify_gmail_thread(
                 access_token,
                 thread_id,
                 add_label_ids=["SPAM"],
@@ -340,7 +349,7 @@ class GoogleWorkspaceClient:
             )
             return GmailThreadActionResult(
                 thread_id=thread_id,
-                thread=self.get_gmail_thread(access_token, thread_id),
+                thread=self._parse_thread(payload),
             )
 
         if action == "trash":
@@ -357,19 +366,26 @@ class GoogleWorkspaceClient:
         if action == "restore":
             payload = self._get_gmail_thread_payload(access_token, thread_id)
             labels = self._thread_label_ids(payload.get("messages", []))
+            restored_payload: dict[str, Any] | None = None
             if "TRASH" in labels:
-                self._request(
+                restored_payload = self._request(
                     "POST",
                     f"{GMAIL_API_BASE}/threads/{thread_id}/untrash",
                     access_token=access_token,
                 )
 
             if "SPAM" in labels:
-                self._modify_gmail_thread(
+                restored_payload = self._modify_gmail_thread(
                     access_token,
                     thread_id,
                     add_label_ids=["INBOX"],
                     remove_label_ids=["SPAM"],
+                )
+
+            if restored_payload is not None:
+                return GmailThreadActionResult(
+                    thread_id=thread_id,
+                    thread=self._parse_thread(restored_payload),
                 )
 
             return GmailThreadActionResult(

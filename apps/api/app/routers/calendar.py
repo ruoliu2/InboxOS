@@ -20,8 +20,8 @@ def list_calendar_events(
     session: AuthSessionRecord = Depends(get_current_auth_session),
     client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
 ) -> list[CalendarEvent]:
-    start = time_min or datetime.now(UTC) - timedelta(days=14)
-    end = time_max or datetime.now(UTC) + timedelta(days=60)
+    start = time_min or (datetime.now(UTC) - timedelta(days=14))
+    end = time_max or (datetime.now(UTC) + timedelta(days=60))
 
     try:
         return client.list_calendar_events(
