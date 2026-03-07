@@ -15,9 +15,12 @@ from urllib.parse import urlencode
 import httpx
 
 from app.core.config import Settings
-from app.schemas.calendar import CalendarEvent
+from app.schemas.calendar import CalendarEvent, CreateCalendarEventRequest
 from app.schemas.common import ActionState
 from app.schemas.thread import (
+    ComposeMode,
+    ComposeThreadRequest,
+    MailboxKey,
     ThreadDetail,
     ThreadMessage,
     ThreadSummary,
@@ -59,6 +62,19 @@ class GoogleUserProfile:
     picture: str | None
 
 
+@dataclass
+class GmailComposeResult:
+    thread: ThreadDetail
+    sent_message: ThreadMessage
+
+
+@dataclass
+class GmailThreadActionResult:
+    thread_id: str
+    thread: ThreadDetail | None
+    deleted: bool = False
+
+
 class GoogleWorkspaceClient:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -77,9 +93,9 @@ class GoogleWorkspaceClient:
                         "openid",
                         "email",
                         "profile",
-                        "https://www.googleapis.com/auth/gmail.readonly",
+                        "https://mail.google.com/",
                         "https://www.googleapis.com/auth/gmail.send",
-                        "https://www.googleapis.com/auth/calendar.readonly",
+                        "https://www.googleapis.com/auth/calendar.events",
                     ]
                 ),
                 "access_type": "offline",
@@ -137,17 +153,23 @@ class GoogleWorkspaceClient:
         *,
         max_results: int = 20,
         page_token: str | None = None,
+        mailbox: MailboxKey = MailboxKey.INBOX,
+        unread_only: bool = False,
         query: str | None = None,
     ) -> ThreadSummaryPage:
         params: dict[str, str] = {
-            "labelIds": "INBOX",
             "maxResults": str(max_results),
-            "includeSpamTrash": "false",
+            "includeSpamTrash": (
+                "true" if mailbox in (MailboxKey.TRASH, MailboxKey.JUNK) else "false"
+            ),
         }
+        label_id = self._gmail_label_for_mailbox(mailbox)
+        if label_id is not None:
+            params["labelIds"] = label_id
         if page_token:
             params["pageToken"] = page_token
-        if query:
-            params["q"] = query
+        if effective_query := self._compose_thread_query(mailbox, query, unread_only):
+            params["q"] = effective_query
 
         payload = self._request(
             "GET",
@@ -160,14 +182,17 @@ class GoogleWorkspaceClient:
             for item in payload.get("threads", [])
             if str(item.get("id") or "").strip()
         ]
+        next_page_token = str(payload.get("nextPageToken") or "").strip() or None
         if not thread_ids:
-            return ThreadSummaryPage()
+            return ThreadSummaryPage(
+                next_page_token=next_page_token,
+                has_more=next_page_token is not None,
+            )
 
         fetch_summary = partial(self.get_gmail_thread_summary, access_token)
         with ThreadPoolExecutor(max_workers=min(6, len(thread_ids))) as executor:
             threads = list(executor.map(fetch_summary, thread_ids))
 
-        next_page_token = str(payload.get("nextPageToken") or "").strip() or None
         return ThreadSummaryPage(
             threads=threads,
             next_page_token=next_page_token,
@@ -186,6 +211,92 @@ class GoogleWorkspaceClient:
         payload = self._get_gmail_thread_payload(access_token, thread_id)
         return self._parse_thread(payload)
 
+    def compose_gmail_thread(
+        self,
+        access_token: str,
+        *,
+        account_email: str,
+        thread_id: str,
+        payload: ComposeThreadRequest,
+    ) -> GmailComposeResult:
+        thread_payload = self._get_gmail_thread_payload(access_token, thread_id)
+        raw_messages = thread_payload.get("messages", [])
+        if not raw_messages:
+            raise RuntimeError("Cannot reply to an empty Gmail thread.")
+
+        latest_message = raw_messages[-1]
+        headers = self._headers_map(
+            latest_message.get("payload", {}).get("headers", [])
+        )
+        sent_at = datetime.now(UTC)
+        message = EmailMessage()
+
+        if payload.mode == ComposeMode.REPLY:
+            recipients = [
+                parseaddr(headers.get("reply-to") or "")[1]
+                or parseaddr(headers.get("from") or "")[1]
+            ]
+            cc_recipients: list[str] = []
+            subject = self._prefix_subject(headers.get("subject"), "Re:")
+            message_body = payload.body.strip()
+            if not message_body:
+                raise RuntimeError("Reply body must not be empty.")
+            self._apply_thread_headers(message, headers)
+        elif payload.mode == ComposeMode.REPLY_ALL:
+            recipients, cc_recipients = self._reply_all_recipients(
+                headers,
+                account_email,
+            )
+            if not recipients and not cc_recipients:
+                raise RuntimeError("Unable to determine Gmail reply-all recipients.")
+            subject = self._prefix_subject(headers.get("subject"), "Re:")
+            message_body = payload.body.strip()
+            if not message_body:
+                raise RuntimeError("Reply body must not be empty.")
+            self._apply_thread_headers(message, headers)
+        else:
+            recipients = payload.to
+            cc_recipients = payload.cc
+            subject = self._prefix_subject(headers.get("subject"), "Fwd:")
+            message_body = self._build_forward_body(
+                payload.body, headers, latest_message
+            )
+
+        if not recipients:
+            raise RuntimeError("Unable to determine Gmail message recipients.")
+
+        message["To"] = ", ".join(recipients)
+        if cc_recipients:
+            message["Cc"] = ", ".join(cc_recipients)
+        if payload.bcc:
+            message["Bcc"] = ", ".join(payload.bcc)
+        message["Subject"] = subject
+        message.set_content(message_body)
+        raw = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8").rstrip("=")
+
+        send_payload = {
+            "raw": raw,
+        }
+        if payload.mode in (ComposeMode.REPLY, ComposeMode.REPLY_ALL):
+            send_payload["threadId"] = thread_id
+
+        response = self._request(
+            "POST",
+            f"{GMAIL_API_BASE}/messages/send",
+            access_token=access_token,
+            json=send_payload,
+        )
+
+        return GmailComposeResult(
+            thread=self.get_gmail_thread(access_token, thread_id),
+            sent_message=ThreadMessage(
+                id=str(response.get("id") or ""),
+                sender=account_email,
+                sent_at=sent_at,
+                body=message_body,
+            ),
+        )
+
     def send_gmail_reply(
         self,
         access_token: str,
@@ -194,54 +305,92 @@ class GoogleWorkspaceClient:
         thread_id: str,
         body: str,
     ) -> ThreadDetail:
-        payload = self._get_gmail_thread_payload(access_token, thread_id)
-        messages = payload.get("messages", [])
-        if not messages:
-            raise RuntimeError("Cannot reply to an empty Gmail thread.")
-
-        latest_message = messages[-1]
-        headers = self._headers_map(
-            latest_message.get("payload", {}).get("headers", [])
+        result = self.compose_gmail_thread(
+            access_token,
+            account_email=account_email,
+            thread_id=thread_id,
+            payload=ComposeThreadRequest(mode=ComposeMode.REPLY, body=body),
         )
-        recipient = (
-            parseaddr(headers.get("reply-to") or "")[1]
-            or parseaddr(headers.get("from") or "")[1]
-        )
-        if not recipient:
-            raise RuntimeError("Unable to determine a Gmail reply recipient.")
+        return result.thread
 
-        subject = headers.get("subject") or "(no subject)"
-        if not subject.lower().startswith("re:"):
-            subject = f"Re: {subject}"
+    def apply_gmail_thread_action(
+        self,
+        access_token: str,
+        *,
+        thread_id: str,
+        action: str,
+    ) -> GmailThreadActionResult:
+        if action == "archive":
+            self._modify_gmail_thread(
+                access_token,
+                thread_id,
+                add_label_ids=[],
+                remove_label_ids=["INBOX"],
+            )
+            return GmailThreadActionResult(
+                thread_id=thread_id,
+                thread=self.get_gmail_thread(access_token, thread_id),
+            )
 
-        message = EmailMessage()
-        message["To"] = recipient
-        message["Subject"] = subject
+        if action == "junk":
+            self._modify_gmail_thread(
+                access_token,
+                thread_id,
+                add_label_ids=["SPAM"],
+                remove_label_ids=["INBOX"],
+            )
+            return GmailThreadActionResult(
+                thread_id=thread_id,
+                thread=self.get_gmail_thread(access_token, thread_id),
+            )
 
-        message_id = headers.get("message-id")
-        references = headers.get("references")
-        if message_id:
-            message["In-Reply-To"] = message_id
-        if references and message_id:
-            message["References"] = f"{references} {message_id}"
-        elif references:
-            message["References"] = references
-        elif message_id:
-            message["References"] = message_id
+        if action == "trash":
+            payload = self._request(
+                "POST",
+                f"{GMAIL_API_BASE}/threads/{thread_id}/trash",
+                access_token=access_token,
+            )
+            return GmailThreadActionResult(
+                thread_id=thread_id,
+                thread=self._parse_thread(payload),
+            )
 
-        message.set_content(body.strip())
-        raw = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8").rstrip("=")
+        if action == "restore":
+            payload = self._get_gmail_thread_payload(access_token, thread_id)
+            labels = self._thread_label_ids(payload.get("messages", []))
+            if "TRASH" in labels:
+                self._request(
+                    "POST",
+                    f"{GMAIL_API_BASE}/threads/{thread_id}/untrash",
+                    access_token=access_token,
+                )
 
-        self._request(
-            "POST",
-            f"{GMAIL_API_BASE}/messages/send",
-            access_token=access_token,
-            json={
-                "raw": raw,
-                "threadId": thread_id,
-            },
-        )
-        return self.get_gmail_thread(access_token, thread_id)
+            if "SPAM" in labels:
+                self._modify_gmail_thread(
+                    access_token,
+                    thread_id,
+                    add_label_ids=["INBOX"],
+                    remove_label_ids=["SPAM"],
+                )
+
+            return GmailThreadActionResult(
+                thread_id=thread_id,
+                thread=self.get_gmail_thread(access_token, thread_id),
+            )
+
+        if action == "delete":
+            self._request(
+                "DELETE",
+                f"{GMAIL_API_BASE}/threads/{thread_id}",
+                access_token=access_token,
+            )
+            return GmailThreadActionResult(
+                thread_id=thread_id,
+                thread=None,
+                deleted=True,
+            )
+
+        raise RuntimeError(f"Unsupported Gmail thread action: {action}")
 
     def list_calendar_events(
         self,
@@ -270,6 +419,40 @@ class GoogleWorkspaceClient:
         ]
         events.sort(key=lambda item: item.starts_at)
         return events
+
+    def create_calendar_event(
+        self,
+        access_token: str,
+        payload: CreateCalendarEventRequest,
+    ) -> CalendarEvent:
+        request_payload: dict[str, Any] = {
+            "summary": payload.title,
+            "description": payload.description,
+            "location": payload.location,
+        }
+        if payload.is_all_day:
+            request_payload["start"] = {"date": payload.starts_at.date().isoformat()}
+            request_payload["end"] = {
+                "date": (payload.ends_at.date() + timedelta(days=1)).isoformat()
+            }
+        else:
+            request_payload["start"] = {"dateTime": self._to_rfc3339(payload.starts_at)}
+            request_payload["end"] = {"dateTime": self._to_rfc3339(payload.ends_at)}
+
+        created = self._request(
+            "POST",
+            f"{CALENDAR_API_BASE}/events",
+            access_token=access_token,
+            json=request_payload,
+        )
+        return self._parse_calendar_event(created)
+
+    def delete_calendar_event(self, access_token: str, event_id: str) -> None:
+        self._request(
+            "DELETE",
+            f"{CALENDAR_API_BASE}/events/{event_id}",
+            access_token=access_token,
+        )
 
     def _post_form(self, url: str, payload: dict[str, str | None]) -> dict[str, Any]:
         return self._request(
@@ -327,6 +510,8 @@ class GoogleWorkspaceClient:
             )
 
         if response.is_success:
+            if response.status_code == 204 or not response.content:
+                return {}
             return response.json()
 
         payload: dict[str, Any] | None = None
@@ -436,6 +621,7 @@ class GoogleWorkspaceClient:
             description=str(payload.get("description") or "").strip() or None,
             is_all_day=is_all_day,
             html_link=str(payload.get("htmlLink") or "").strip() or None,
+            can_delete=not bool(payload.get("locked")),
         )
 
     def _headers_map(self, headers: list[dict[str, Any]]) -> dict[str, str]:
@@ -467,6 +653,148 @@ class GoogleWorkspaceClient:
                         seen.add(email)
                         participants.append(email)
         return participants
+
+    def _thread_label_ids(self, messages: list[dict[str, Any]]) -> set[str]:
+        label_ids: set[str] = set()
+        for item in messages:
+            for label_id in item.get("labelIds", []) or []:
+                normalized = str(label_id).strip()
+                if normalized:
+                    label_ids.add(normalized)
+        return label_ids
+
+    def _gmail_label_for_mailbox(self, mailbox: MailboxKey) -> str | None:
+        return {
+            MailboxKey.INBOX: "INBOX",
+            MailboxKey.SENT: "SENT",
+            MailboxKey.TRASH: "TRASH",
+            MailboxKey.JUNK: "SPAM",
+        }.get(mailbox)
+
+    def _compose_thread_query(
+        self,
+        mailbox: MailboxKey,
+        query: str | None,
+        unread_only: bool,
+    ) -> str | None:
+        fragments: list[str] = []
+        if mailbox == MailboxKey.ARCHIVE:
+            fragments.append(
+                "-label:inbox -label:sent -label:drafts -label:spam -label:trash"
+            )
+        if unread_only:
+            fragments.append("is:unread")
+        if query and query.strip():
+            fragments.append(query.strip())
+        combined = " ".join(fragment for fragment in fragments if fragment)
+        return combined or None
+
+    def _modify_gmail_thread(
+        self,
+        access_token: str,
+        thread_id: str,
+        *,
+        add_label_ids: list[str],
+        remove_label_ids: list[str],
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            f"{GMAIL_API_BASE}/threads/{thread_id}/modify",
+            access_token=access_token,
+            json={
+                "addLabelIds": add_label_ids,
+                "removeLabelIds": remove_label_ids,
+            },
+        )
+
+    def _apply_thread_headers(
+        self, message: EmailMessage, headers: dict[str, str]
+    ) -> None:
+        message_id = headers.get("message-id")
+        references = headers.get("references")
+        if message_id:
+            message["In-Reply-To"] = message_id
+        if references and message_id:
+            message["References"] = f"{references} {message_id}"
+        elif references:
+            message["References"] = references
+        elif message_id:
+            message["References"] = message_id
+
+    def _reply_all_recipients(
+        self,
+        headers: dict[str, str],
+        account_email: str,
+    ) -> tuple[list[str], list[str]]:
+        current_account = account_email.strip().lower()
+        primary = (
+            parseaddr(headers.get("reply-to") or "")[1]
+            or parseaddr(headers.get("from") or "")[1]
+        )
+        to_recipients = self._dedupe_recipients(
+            [primary, *self._parse_recipient_header(headers.get("to"))],
+            current_account,
+        )
+        seen = {item.lower() for item in to_recipients}
+        cc_recipients = [
+            recipient
+            for recipient in self._parse_recipient_header(headers.get("cc"))
+            if recipient.lower() not in seen and recipient.lower() != current_account
+        ]
+        return to_recipients, cc_recipients
+
+    def _parse_recipient_header(self, value: str | None) -> list[str]:
+        recipients: list[str] = []
+        for candidate in (value or "").split(","):
+            email = parseaddr(candidate.strip())[1].lower()
+            if email:
+                recipients.append(email)
+        return recipients
+
+    def _dedupe_recipients(
+        self, recipients: list[str], current_account: str
+    ) -> list[str]:
+        values: list[str] = []
+        seen: set[str] = set()
+        for recipient in recipients:
+            normalized = recipient.strip().lower()
+            if not normalized or normalized == current_account or normalized in seen:
+                continue
+            seen.add(normalized)
+            values.append(normalized)
+        return values
+
+    def _build_forward_body(
+        self,
+        body: str,
+        headers: dict[str, str],
+        latest_message: dict[str, Any],
+    ) -> str:
+        original_message = self._parse_message(latest_message)
+        fragments = []
+        if body.strip():
+            fragments.append(body.strip())
+            fragments.append("")
+        fragments.extend(
+            [
+                "---------- Forwarded message ---------",
+                f"From: {headers.get('from') or 'unknown@example.com'}",
+                f"Date: {original_message.sent_at.isoformat()}",
+                f"Subject: {headers.get('subject') or '(no subject)'}",
+                f"To: {headers.get('to') or '(unknown recipient)'}",
+            ]
+        )
+        if headers.get("cc"):
+            fragments.append(f"Cc: {headers['cc']}")
+        fragments.append("")
+        fragments.append(original_message.body or "(No message body)")
+        return "\n".join(fragments).strip()
+
+    def _prefix_subject(self, subject: str | None, prefix: str) -> str:
+        normalized_subject = (subject or "(no subject)").strip() or "(no subject)"
+        if normalized_subject.lower().startswith(prefix.lower()):
+            return normalized_subject
+        return f"{prefix} {normalized_subject}"
 
     def _latest_message_timestamp(self, messages: list[dict[str, Any]]) -> datetime:
         timestamps = [

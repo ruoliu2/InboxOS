@@ -1,5 +1,13 @@
 export type ActionState = "to_reply" | "to_follow_up" | "task" | "fyi";
 export type TaskStatus = "open" | "completed";
+export type MailboxKey = "inbox" | "sent" | "archive" | "trash" | "junk";
+export type ComposeMode = "reply" | "reply_all" | "forward";
+export type ThreadActionName =
+  | "archive"
+  | "junk"
+  | "trash"
+  | "delete"
+  | "restore";
 
 export type ThreadSummary = {
   id: string;
@@ -44,6 +52,31 @@ export type ReplyToThreadResponse = {
   muted: boolean;
 };
 
+export type ComposeThreadRequest = {
+  mode: ComposeMode;
+  body: string;
+  to?: string[];
+  cc?: string[];
+  bcc?: string[];
+};
+
+export type ComposeThreadResponse = {
+  thread: ThreadDetail;
+  sent_message: ThreadMessage;
+  mode: ComposeMode;
+};
+
+export type ThreadActionRequest = {
+  action: ThreadActionName;
+};
+
+export type ThreadActionResponse = {
+  thread_id: string;
+  action: ThreadActionName;
+  thread: ThreadDetail | null;
+  deleted: boolean;
+};
+
 export type TaskItem = {
   id: string;
   title: string;
@@ -85,6 +118,7 @@ export type CalendarEvent = {
   description: string | null;
   is_all_day: boolean;
   html_link: string | null;
+  can_delete: boolean;
 };
 
 export type CreateTaskRequest = {
@@ -92,4 +126,13 @@ export type CreateTaskRequest = {
   due_at?: string | null;
   thread_id?: string | null;
   category?: string | null;
+};
+
+export type CreateCalendarEventRequest = {
+  title: string;
+  starts_at: string;
+  ends_at: string;
+  is_all_day?: boolean;
+  location?: string | null;
+  description?: string | null;
 };

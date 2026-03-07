@@ -45,7 +45,7 @@ def analyze_thread(
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    task_service.create_tasks_for_thread(thread)
+    task_service.create_tasks_for_thread("local@inboxos.dev", thread)
     return AnalyzeThreadResponse(thread_id=thread_id, analysis=analysis)
 
 

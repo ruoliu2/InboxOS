@@ -352,6 +352,8 @@ def test_gmail_route_returns_503_for_disabled_google_service(client, monkeypatch
         *,
         max_results: int = 20,
         page_token: str | None = None,
+        mailbox=None,
+        unread_only: bool = False,
         query: str | None = None,
     ) -> ThreadSummaryPage:
         raise GoogleAPIError(
@@ -478,6 +480,8 @@ def test_gmail_route_returns_cached_first_page_before_refresh(client, monkeypatc
         *,
         max_results: int = 20,
         page_token: str | None = None,
+        mailbox=None,
+        unread_only: bool = False,
         query: str | None = None,
     ) -> ThreadSummaryPage:
         raise RuntimeError("live fetch should not block cached startup")
@@ -505,10 +509,14 @@ def test_gmail_route_forwards_pagination_options(client, monkeypatch):
         *,
         max_results: int = 20,
         page_token: str | None = None,
+        mailbox=None,
+        unread_only: bool = False,
         query: str | None = None,
     ) -> ThreadSummaryPage:
         captured["max_results"] = max_results
         captured["page_token"] = page_token
+        captured["mailbox"] = mailbox.value if mailbox is not None else None
+        captured["unread_only"] = unread_only
         captured["query"] = query
         return ThreadSummaryPage(
             threads=[],
@@ -526,8 +534,193 @@ def test_gmail_route_forwards_pagination_options(client, monkeypatch):
     assert captured == {
         "max_results": 10,
         "page_token": "cursor-2",
+        "mailbox": "inbox",
+        "unread_only": False,
         "query": "from:founder",
     }
+
+
+def test_gmail_route_forwards_mailbox_and_unread_filters(client, monkeypatch):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+
+    google_client = get_google_workspace_client()
+    captured: dict[str, object] = {}
+
+    def list_threads(access_token: str, **kwargs) -> ThreadSummaryPage:
+        captured.update(kwargs)
+        return ThreadSummaryPage(threads=[], next_page_token=None, has_more=False)
+
+    monkeypatch.setattr(google_client, "list_gmail_threads", list_threads)
+
+    response = client.get(
+        "/gmail/threads?mailbox=archive&unread_only=true&q=label:team"
+    )
+
+    assert response.status_code == 200
+    assert captured["mailbox"].value == "archive"
+    assert captured["unread_only"] is True
+    assert captured["query"] == "label:team"
+
+
+def test_compose_route_updates_detail_cache_and_response(client, monkeypatch):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+
+    google_client = get_google_workspace_client()
+    thread = ThreadDetail(
+        id="gmail-thread-3",
+        subject="Reply trail",
+        snippet="Latest reply",
+        participants=["founder@gmail.com", "user@gmail.com"],
+        last_message_at=datetime.now(UTC),
+        action_states=[ActionState.FYI],
+        messages=[
+            ThreadMessage(
+                id="gmail-message-3",
+                sender="user@gmail.com",
+                sent_at=datetime.now(UTC),
+                body="Latest reply",
+            )
+        ],
+        analysis=None,
+    )
+    monkeypatch.setattr(
+        google_client,
+        "compose_gmail_thread",
+        lambda access_token, **_: type(
+            "ComposeResult",
+            (),
+            {
+                "thread": thread,
+                "sent_message": thread.messages[-1],
+            },
+        )(),
+    )
+
+    response = client.post(
+        "/gmail/threads/gmail-thread-3/compose",
+        json={"mode": "reply_all", "body": "Looping everybody in."},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "reply_all"
+    cached_thread = get_gmail_mailbox_cache().get_thread_detail(
+        session.account_email,
+        "gmail-thread-3",
+    )
+    assert cached_thread is not None
+    assert cached_thread.subject == "Reply trail"
+
+
+def test_thread_action_route_invalidates_cached_pages(client, monkeypatch):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+
+    cache = get_gmail_mailbox_cache()
+    cache.store_thread_page(
+        session.account_email,
+        mailbox_key="inbox",
+        unread_only=False,
+        page=ThreadSummaryPage(
+            threads=[
+                ThreadSummary(
+                    id="gmail-thread-4",
+                    subject="Cached page",
+                    snippet="Cached snippet",
+                    participants=["cached@example.com", session.account_email],
+                    last_message_at=datetime.now(UTC),
+                    action_states=[ActionState.FYI],
+                )
+            ],
+            next_page_token=None,
+            has_more=False,
+        ),
+    )
+
+    google_client = get_google_workspace_client()
+    monkeypatch.setattr(
+        google_client,
+        "apply_gmail_thread_action",
+        lambda access_token, **_: type(
+            "ActionResult",
+            (),
+            {
+                "thread_id": "gmail-thread-4",
+                "thread": None,
+                "deleted": True,
+            },
+        )(),
+    )
+
+    response = client.post(
+        "/gmail/threads/gmail-thread-4/action",
+        json={"action": "delete"},
+    )
+
+    assert response.status_code == 200
+    assert (
+        cache.get_thread_page(
+            session.account_email,
+            mailbox_key="inbox",
+            unread_only=False,
+            page_key=None,
+        )
+        is None
+    )
+
+
+def test_calendar_mutation_routes_use_google_client(client, monkeypatch):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+
+    google_client = get_google_workspace_client()
+    monkeypatch.setattr(
+        google_client,
+        "create_calendar_event",
+        lambda access_token, payload: CalendarEvent(
+            id="event-created",
+            title=payload.title,
+            starts_at=payload.starts_at,
+            ends_at=payload.ends_at,
+            location=payload.location,
+            description=payload.description,
+            is_all_day=payload.is_all_day,
+            html_link=None,
+            can_delete=True,
+        ),
+    )
+    deleted: dict[str, str] = {}
+    monkeypatch.setattr(
+        google_client,
+        "delete_calendar_event",
+        lambda access_token, event_id: deleted.setdefault("event_id", event_id),
+    )
+
+    create_response = client.post(
+        "/calendar/events",
+        json={
+            "title": "Founder sync",
+            "starts_at": datetime.now(UTC).isoformat(),
+            "ends_at": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+            "is_all_day": False,
+        },
+    )
+
+    assert create_response.status_code == 200
+    assert create_response.json()["id"] == "event-created"
+
+    delete_response = client.delete("/calendar/events/event-created")
+    assert delete_response.status_code == 204
+    assert deleted["event_id"] == "event-created"
 
 
 def test_google_client_lists_thread_summaries_without_full_thread_hydration(

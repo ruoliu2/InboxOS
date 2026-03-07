@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends
 
 from app.schemas.sync import SyncStartRequest, SyncStartResponse, SyncStatusResponse
-from app.services.dependencies import get_sync_service
+from app.services.dependencies import get_current_auth_session, get_sync_service
 from app.services.sync_service import SyncService
+from app.storage.auth_store import AuthSessionRecord
 
 router = APIRouter()
 
@@ -10,9 +11,10 @@ router = APIRouter()
 @router.post("/start", response_model=SyncStartResponse)
 def start_sync(
     payload: SyncStartRequest,
+    session: AuthSessionRecord = Depends(get_current_auth_session),
     service: SyncService = Depends(get_sync_service),
 ) -> SyncStartResponse:
-    result = service.start_sync(payload)
+    result = service.start_sync(payload, account_email=session.account_email)
     return SyncStartResponse(**result, started_at=result["updated_at"])
 
 
