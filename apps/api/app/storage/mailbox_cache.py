@@ -29,28 +29,46 @@ class GmailMailboxCache:
         self,
         account_email: str,
         *,
+        mailbox_key: str = "inbox",
+        unread_only: bool = False,
         query: str | None = None,
         page_key: str | None = None,
     ) -> ThreadSummaryPage | None:
+        normalized_mailbox = self._normalize_mailbox(mailbox_key)
+        normalized_unread = self._normalize_unread(unread_only)
         normalized_query = self._normalize_query(query)
         normalized_page_key = self._normalize_page_key(page_key)
 
         with self._lock, self._connect() as connection:
             page_row = connection.execute(
                 """
-                SELECT thread_ids_json, next_page_token, has_more
+                SELECT thread_ids_json, next_page_token, has_more, total_count
                 FROM gmail_thread_pages
-                WHERE account_email = ? AND query = ? AND page_key = ?
+                WHERE account_email = ? AND mailbox_key = ? AND unread_only = ?
+                  AND query = ? AND page_key = ?
                 """,
-                (account_email, normalized_query, normalized_page_key),
+                (
+                    account_email,
+                    normalized_mailbox,
+                    normalized_unread,
+                    normalized_query,
+                    normalized_page_key,
+                ),
             ).fetchone()
 
             if page_row is None:
                 return None
 
             thread_ids = json.loads(page_row["thread_ids_json"])
-            if not isinstance(thread_ids, list) or not thread_ids:
+            if not isinstance(thread_ids, list):
                 return None
+            if not thread_ids:
+                return ThreadSummaryPage(
+                    threads=[],
+                    next_page_token=page_row["next_page_token"],
+                    has_more=bool(page_row["has_more"]),
+                    total_count=page_row["total_count"],
+                )
 
             summaries_by_id: dict[str, ThreadSummary] = {}
             summary_rows = connection.execute(
@@ -77,6 +95,7 @@ class GmailMailboxCache:
                 threads=ordered_threads,
                 next_page_token=page_row["next_page_token"],
                 has_more=bool(page_row["has_more"]),
+                total_count=page_row["total_count"],
             )
 
     def store_thread_page(
@@ -84,9 +103,13 @@ class GmailMailboxCache:
         account_email: str,
         *,
         page: ThreadSummaryPage,
+        mailbox_key: str = "inbox",
+        unread_only: bool = False,
         query: str | None = None,
         page_key: str | None = None,
     ) -> None:
+        normalized_mailbox = self._normalize_mailbox(mailbox_key)
+        normalized_unread = self._normalize_unread(unread_only)
         normalized_query = self._normalize_query(query)
         normalized_page_key = self._normalize_page_key(page_key)
         updated_at = datetime.now(UTC).isoformat()
@@ -129,28 +152,55 @@ class GmailMailboxCache:
                 """
                 INSERT INTO gmail_thread_pages (
                     account_email,
+                    mailbox_key,
+                    unread_only,
                     query,
                     page_key,
                     thread_ids_json,
                     next_page_token,
                     has_more,
+                    total_count,
                     updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(account_email, query, page_key) DO UPDATE SET
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(account_email, mailbox_key, unread_only, query, page_key)
+                DO UPDATE SET
                     thread_ids_json = excluded.thread_ids_json,
                     next_page_token = excluded.next_page_token,
                     has_more = excluded.has_more,
+                    total_count = excluded.total_count,
                     updated_at = excluded.updated_at
                 """,
                 (
                     account_email,
+                    normalized_mailbox,
+                    normalized_unread,
                     normalized_query,
                     normalized_page_key,
                     json.dumps([thread.id for thread in page.threads]),
                     page.next_page_token,
                     int(page.has_more),
+                    page.total_count,
                     updated_at,
                 ),
+            )
+            connection.commit()
+
+    def invalidate_account_pages(self, account_email: str) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                "DELETE FROM gmail_thread_pages WHERE account_email = ?",
+                (account_email,),
+            )
+            connection.commit()
+
+    def delete_thread_detail(self, account_email: str, thread_id: str) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                """
+                DELETE FROM gmail_thread_details
+                WHERE account_email = ? AND thread_id = ?
+                """,
+                (account_email, thread_id),
             )
             connection.commit()
 
@@ -236,6 +286,16 @@ class GmailMailboxCache:
 
     def _init_db(self) -> None:
         with self._lock, self._connect() as connection:
+            page_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(gmail_thread_pages)"
+                ).fetchall()
+            }
+            if page_columns and {"mailbox_key", "unread_only"} - page_columns:
+                connection.execute("DROP TABLE IF EXISTS gmail_thread_pages")
+                page_columns = set()
+
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS gmail_thread_summaries (
@@ -255,16 +315,29 @@ class GmailMailboxCache:
                 """
                 CREATE TABLE IF NOT EXISTS gmail_thread_pages (
                     account_email TEXT NOT NULL,
+                    mailbox_key TEXT NOT NULL,
+                    unread_only INTEGER NOT NULL,
                     query TEXT NOT NULL,
                     page_key TEXT NOT NULL,
                     thread_ids_json TEXT NOT NULL,
                     next_page_token TEXT,
                     has_more INTEGER NOT NULL,
+                    total_count INTEGER,
                     updated_at TEXT NOT NULL,
-                    PRIMARY KEY (account_email, query, page_key)
+                    PRIMARY KEY (
+                        account_email,
+                        mailbox_key,
+                        unread_only,
+                        query,
+                        page_key
+                    )
                 )
                 """
             )
+            if page_columns and "total_count" not in page_columns:
+                connection.execute(
+                    "ALTER TABLE gmail_thread_pages ADD COLUMN total_count INTEGER"
+                )
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS gmail_thread_details (
@@ -289,6 +362,12 @@ class GmailMailboxCache:
 
     def _normalize_query(self, query: str | None) -> str:
         return (query or "").strip()
+
+    def _normalize_mailbox(self, mailbox_key: str | None) -> str:
+        return (mailbox_key or "inbox").strip() or "inbox"
+
+    def _normalize_unread(self, unread_only: bool) -> int:
+        return int(bool(unread_only))
 
     def _normalize_page_key(self, page_key: str | None) -> str:
         return page_key or "__first__"

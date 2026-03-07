@@ -3,11 +3,17 @@ import {
   AuthSessionResponse,
   AuthStartResponse,
   CalendarEvent,
+  ComposeThreadRequest,
+  ComposeThreadResponse,
+  CreateCalendarEventRequest,
   CreateTaskRequest,
   ReplyToThreadResponse,
   TaskItem,
+  ThreadActionName,
+  ThreadActionResponse,
   ThreadDetail,
   ThreadSummaryPage,
+  MailboxKey,
 } from "@inboxos/types";
 
 async function readErrorMessage(response: Response): Promise<string> {
@@ -69,6 +75,8 @@ export const api = {
     page_token?: string | null;
     page_size?: number;
     q?: string;
+    mailbox?: MailboxKey;
+    unread_only?: boolean;
   }) => {
     const params = new URLSearchParams();
     if (options?.page_token) {
@@ -79,6 +87,12 @@ export const api = {
     }
     if (options?.q) {
       params.set("q", options.q);
+    }
+    if (options?.mailbox) {
+      params.set("mailbox", options.mailbox);
+    }
+    if (options?.unread_only) {
+      params.set("unread_only", "true");
     }
 
     const query = params.toString();
@@ -96,10 +110,29 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  composeGmailThread: (threadId: string, payload: ComposeThreadRequest) =>
+    request<ComposeThreadResponse>(`/gmail/threads/${threadId}/compose`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  actOnGmailThread: (threadId: string, action: ThreadActionName) =>
+    request<ThreadActionResponse>(`/gmail/threads/${threadId}/action`, {
+      method: "POST",
+      body: JSON.stringify({ action }),
+    }),
   getCalendarEvents: (timeMin: string, timeMax: string) =>
     request<CalendarEvent[]>(
       `/calendar/events?time_min=${encodeURIComponent(timeMin)}&time_max=${encodeURIComponent(timeMax)}`,
     ),
+  createCalendarEvent: (payload: CreateCalendarEventRequest) =>
+    request<CalendarEvent>("/calendar/events", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  deleteCalendarEvent: (eventId: string) =>
+    request<void>(`/calendar/events/${eventId}`, {
+      method: "DELETE",
+    }),
   getTasks: () => request<TaskItem[]>("/tasks"),
   createTask: (payload: CreateTaskRequest) =>
     request<TaskItem>("/tasks/create", {
