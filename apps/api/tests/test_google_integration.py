@@ -606,13 +606,13 @@ def test_gmail_mailbox_counts_route_returns_label_totals(client, monkeypatch):
     monkeypatch.setattr(
         google_client,
         "get_gmail_mailbox_counts",
-        lambda access_token: {
-            "inbox": 1524,
-            "sent": 201,
-            "archive": None,
-            "trash": 8,
-            "junk": 2,
-        },
+        lambda access_token: MailboxCountsResponse(
+            inbox=1524,
+            sent=201,
+            archive=None,
+            trash=8,
+            junk=2,
+        ),
     )
 
     response = client.get("/gmail/mailbox-counts")
