@@ -6,7 +6,7 @@ InboxOS is a mail-first AI workspace with one shared UI direction across the liv
 
 - `apps/web`: Next.js host app for the current product surface
 - `apps/desktop`: planned macOS desktop shell around the shared app packages
-- `apps/api`: FastAPI backend for auth, sync, threads, and tasks
+- `apps/api`: FastAPI backend for auth, mail, calendar, and tasks
 - `packages/app`: shared app shell and route-level page composition
 - `packages/features`: mail, tasks, calendar, and auth feature workspaces
 - `packages/ui`: shared UI chrome such as the left app rail
@@ -25,22 +25,22 @@ A2["Desktop user"] --> C1["Apps desktop"]
 B1 --> D1["Shared app packages"]
 C1 --> D1
 D1 --> E1["Apps api"]
-E1 --> F1["Mail adapter"]
-E1 --> G1["Action engine"]
-G1 --> H1["Task service"]
-E1 --> I1["Reply workflow"]
+E1 --> F1["Mail integration layer"]
+F1 --> G1["Mailbox cache"]
+E1 --> H1["Auth and calendar integration"]
+E1 --> I1["Task service"]
+E1 --> J1["Reply workflow"]
 ```
 
 ## Core Flows
 
 ```mermaid
 graph TD
-A1["Sync inbox"] --> B1["Analyze each thread"]
-B1 --> C1["Assign action states"]
-B1 --> D1["Create task candidates"]
-C1 --> E1["Render mail first views"]
-E1 --> F1["User sends direct reply"]
-F1 --> G1["Thread updates in place"]
+A1["Connect mail account"] --> B1["Load thread summaries"]
+B1 --> C1["Open thread detail on demand"]
+B1 --> D1["Scroll for older inbox pages"]
+C1 --> E1["User sends direct reply"]
+E1 --> F1["Thread refreshes in place"]
 ```
 
 ## Local Development
@@ -57,7 +57,10 @@ F1 --> G1["Thread updates in place"]
 
 ```bash
 cp .env.example .env
-# Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env before using Google sign-in.
+# Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env.
+# GOOGLE_REDIRECT_URI is optional locally and defaults to http://localhost:8000/auth/google/callback.
+# Enable Gmail API and Google Calendar API in the same Google Cloud project.
+# Optionally set SESSION_DB_PATH and GMAIL_CACHE_DB_PATH to persistent storage.
 
 cd apps/api
 uv sync --group dev
@@ -75,6 +78,14 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 bun run dev
 ```
 
 Open [http://localhost:3000/mail](http://localhost:3000/mail).
+
+## Mail Workspace Behavior
+
+- first mailbox paint loads the newest 20 thread summaries
+- full thread detail loads only when a thread is opened or deep-linked
+- scrolling near the bottom loads older inbox pages
+- search currently filters only the summaries already loaded in the client
+- the current live mail integration uses Gmail, and the backend persists summary pages and opened thread detail in `GMAIL_CACHE_DB_PATH`
 
 ### Desktop
 
@@ -138,7 +149,9 @@ Production deploys run from the dedicated branch `codex/deploy-vercel-railway`, 
 - expose port `8000`
 - attach a persistent volume at `/data`
 - set `SESSION_DB_PATH=/data/auth_sessions.sqlite3`
-- set env vars from `.env.example` plus production overrides for `SESSION_COOKIE_SECURE`, `CORS_ORIGINS`, `WEB_BASE_URL`, and `GOOGLE_REDIRECT_URI`
+- set env vars from `.env.example` plus production overrides for `SESSION_COOKIE_SECURE`, `CORS_ORIGINS`, and `WEB_BASE_URL`
+- optionally put `GMAIL_CACHE_DB_PATH` on persistent storage if mailbox cache should survive container replacement
+- `GOOGLE_REDIRECT_URI` is optional on Railway when `RAILWAY_PUBLIC_DOMAIN` is available, but can still be set explicitly
 
 See [docs/deployment/vercel-railway-runbook.md](./docs/deployment/vercel-railway-runbook.md) for the full provider setup and rollout sequence.
 
@@ -147,8 +160,9 @@ See [docs/deployment/vercel-railway-runbook.md](./docs/deployment/vercel-railway
 Implemented:
 
 - mail-first shared UI structure for web and future desktop shell reuse
-- Gmail sync stub with deterministic sample threads
-- thread analysis summary and action-state assignment
-- task generation from deadlines
-- direct thread reply endpoint for the mail workspace
+- Google-backed auth start, callback, session, and logout flow with an HTTP-only session cookie
+- the live mail integration currently uses Gmail with summary-first inbox loading and a persisted first-page cache
+- full thread fetch on open plus direct reply from the mail workspace
+- infinite scroll for older inbox pages
+- Google Calendar event loading in the calendar workspace
 - mail, tasks, calendar, and auth surfaces in the web host app

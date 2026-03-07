@@ -2,16 +2,18 @@
 
 ## 1. Summary
 
-InboxOS is a mail-first AI email workspace for Gmail-first users. The frontend is built in Next.js, and the design direction aims to preserve the same interface across web and future macOS packaging.
+InboxOS is a mail-first workspace for Gmail-first users. The frontend is built
+in Next.js, and the design direction aims to preserve the same interface across
+web and future macOS packaging.
 
 ## 2. Goals
 
 - keep one shared UI direction across web and future macOS packaging
 - ship a Mail-style three-pane layout first
-- sync Gmail threads reliably
-- extract summary, action items, deadlines, and requested info or documents
-- maintain action views: To Reply, To Follow Up, Tasks, FYI
+- support Gmail first and leave room for additional mail providers later
+- load inbox summaries quickly and fetch full thread detail on demand
 - support direct reply from the mail workspace
+- show calendar context and tasks in the same product surface
 
 ## 3. Non Goals
 
@@ -29,13 +31,12 @@ A1["Next app shared UI"] --> B1["Web runtime"]
 A1 --> C1["Future macOS packaging"]
 B1 --> D1["FastAPI backend"]
 C1 --> D1
-D1 --> E1["Mail sync adapter"]
-E1 --> F1["Gmail provider"]
-D1 --> G1["Agent layer"]
-G1 --> H1["OpenAI compatible API"]
-D1 --> I1["Action state engine"]
-I1 --> J1["Task service"]
-D1 --> K1["Reply send path"]
+D1 --> E1["Mail integration layer"]
+E1 --> F1["Current Gmail provider"]
+E1 --> G1["Mailbox cache"]
+D1 --> H1["Google auth and calendar"]
+D1 --> I1["Task service"]
+D1 --> J1["Reply send path"]
 ```
 
 ## 5. Tech Choices
@@ -59,11 +60,8 @@ Why:
 
 ### Mail Integration
 
-- MailCore2 or similar OSS mail sync library
-
-### LLM Provider
-
-- OpenAI-compatible API
+- Google Workspace APIs for the current live implementation
+- keep the mail integration layer ready for additional providers later
 
 ## 6. Deployment
 
@@ -87,19 +85,17 @@ Reason:
 
 ### 7.2 Email ingestion
 
-1. Sync inbox and sent mail
-2. Normalize thread structure
-3. Send thread to the agent layer
-4. Extract summary, actions, deadlines, and recommended next step
+1. Connect the mail account through Google OAuth
+2. Load the newest thread summaries from the current mail provider
+3. Fetch full thread detail only when the user opens a thread or deep link
+4. Load older inbox pages as the user scrolls
 
-### 7.3 Action state generation
+### 7.3 Mail browsing behavior
 
-A thread can appear in multiple action views at once:
-
-- To Reply
-- To Follow Up
-- Tasks
-- FYI
+- summary-first inbox loading
+- on-demand thread detail fetch
+- local search over already-loaded summaries
+- direct reply from the reading pane
 
 ### 7.4 Reply flow
 
@@ -134,12 +130,14 @@ Mail-inspired three-pane layout:
 
 ## 9. API Shape
 
-- `POST /sync/start`
-- `GET /sync/status`
-- `GET /threads`
-- `GET /threads/{id}`
-- `POST /threads/{id}/analyze`
-- `POST /threads/{id}/reply`
+- `GET /auth/google/start`
+- `GET /auth/google/callback`
+- `GET /auth/session`
+- `POST /auth/logout`
+- `GET /gmail/threads`
+- `GET /gmail/threads/{id}`
+- `POST /gmail/threads/{id}/reply`
+- `GET /calendar/events`
 - `GET /tasks`
 - `POST /tasks/create`
 - `POST /tasks/{id}/complete`

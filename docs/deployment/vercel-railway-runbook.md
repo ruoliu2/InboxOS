@@ -61,18 +61,18 @@ Set these production environment variables:
 - `SESSION_DB_PATH=/data/auth_sessions.sqlite3`
 - `CORS_ORIGINS=https://<vercel-domain>`
 - `WEB_BASE_URL=https://<vercel-domain>`
-- `GOOGLE_REDIRECT_URI=https://<railway-domain>/auth/google/callback`
+- `GOOGLE_REDIRECT_URI=<optional explicit override>`
 - `GOOGLE_CLIENT_ID=<secret>`
 - `GOOGLE_CLIENT_SECRET=<secret>`
-- `OPENAI_API_BASE=<optional>`
-- `OPENAI_API_KEY=<optional>`
+
+If `GOOGLE_REDIRECT_URI` is unset, Railway deployments fall back to `RAILWAY_PUBLIC_DOMAIN` for the callback URL.
 
 ## Provisioning Order
 
 1. Create the Railway service, enable public networking, add the `/data` volume, and set the API environment variables except the final Vercel URL values.
 2. Push `codex/deploy-vercel-railway` so Railway can build and expose its generated domain.
 3. Create the Vercel project and set `NEXT_PUBLIC_API_BASE_URL` to the Railway-generated domain.
-4. After Vercel assigns its production URL, update Railway `CORS_ORIGINS`, `WEB_BASE_URL`, and `GOOGLE_REDIRECT_URI`.
+4. After Vercel assigns its production URL, update Railway `CORS_ORIGINS` and `WEB_BASE_URL`.
 5. Update the Google OAuth client with the Vercel web origin and the Railway callback URL.
 6. Redeploy both services and verify login, API health, and persistent sessions across a Railway redeploy.
 
