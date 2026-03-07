@@ -24,6 +24,7 @@ import { formatDate } from "@inboxos/lib/format";
 import {
   AuthSessionResponse,
   ComposeMode,
+  MailboxCounts,
   MailboxKey,
   ThreadActionName,
   ThreadDetail,
@@ -49,6 +50,13 @@ type ConfirmState = {
 } | null;
 
 const PAGE_SIZE = 20;
+const EMPTY_MAILBOX_COUNTS: MailboxCounts = {
+  inbox: null,
+  sent: null,
+  archive: null,
+  trash: null,
+  junk: null,
+};
 
 const primaryFolders: Array<{
   key: MailboxKey;
@@ -197,7 +205,8 @@ function hasHtmlPreview(message: ThreadMessage): boolean {
 export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   const [session, setSession] = useState<AuthSessionResponse | null>(null);
   const [sessionChecked, setSessionChecked] = useState(false);
-  const [mailboxCount, setMailboxCount] = useState<number | null>(null);
+  const [mailboxCounts, setMailboxCounts] =
+    useState<MailboxCounts>(EMPTY_MAILBOX_COUNTS);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(
     initialThreadId ?? null,
@@ -235,6 +244,19 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   const unreadOnly = listTab === "unread";
   const activeHeading = mailboxHeading(mailbox);
 
+  const loadMailboxCounts = useCallback(async () => {
+    if (!session?.authenticated) {
+      return;
+    }
+
+    try {
+      const counts = await api.getGmailMailboxCounts();
+      setMailboxCounts(counts);
+    } catch {
+      setMailboxCounts(EMPTY_MAILBOX_COUNTS);
+    }
+  }, [session?.authenticated]);
+
   const loadInitialThreads = useCallback(async () => {
     if (!session?.authenticated) {
       return;
@@ -252,7 +274,6 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
         unread_only: unreadOnly,
       });
       setThreads(page.threads);
-      setMailboxCount(page.total_count);
       setNextPageToken(page.next_page_token);
       setHasMore(page.has_more);
       if (page.threads.length === 0) {
@@ -260,7 +281,6 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
       }
     } catch (loadError) {
       setError((loadError as Error).message);
-      setMailboxCount(null);
       setThreads([]);
       setNextPageToken(null);
       setHasMore(false);
@@ -292,7 +312,6 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
         unread_only: unreadOnly,
       });
       setThreads((current) => mergeThreadSummaries(current, page.threads));
-      setMailboxCount(page.total_count);
       setNextPageToken(page.next_page_token);
       setHasMore(page.has_more);
     } catch (loadError) {
@@ -349,6 +368,13 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
       window.clearTimeout(handle);
     };
   }, [searchInput]);
+
+  useEffect(() => {
+    if (!sessionChecked || !session?.authenticated) {
+      return;
+    }
+    void loadMailboxCounts();
+  }, [loadMailboxCounts, session?.authenticated, sessionChecked]);
 
   useEffect(() => {
     if (!sessionChecked || !session?.authenticated) {
@@ -489,7 +515,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
           setSelectedThread(null);
         }
 
-        await loadInitialThreads();
+        await Promise.all([loadInitialThreads(), loadMailboxCounts()]);
         setNotice(
           {
             archive: "Thread archived.",
@@ -506,7 +532,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
         setConfirmState(null);
       }
     },
-    [loadInitialThreads, mailbox, selectedThreadId],
+    [loadInitialThreads, loadMailboxCounts, mailbox, selectedThreadId],
   );
 
   const moreMenuItems = useMemo(() => {
@@ -566,6 +592,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
           "prepend",
         ),
       );
+      await loadMailboxCounts();
       setComposeBody("");
       setForwardTo("");
       setForwardCc("");
@@ -589,6 +616,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     try {
       await api.logout();
     } finally {
+      setMailboxCounts(EMPTY_MAILBOX_COUNTS);
       window.location.href = "/auth";
     }
   }
@@ -609,7 +637,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
 
           <div className="mail-folder-group">
             {primaryFolders.map((folder) => {
-              const count = folder.key === mailbox ? mailboxCount : 0;
+              const count = mailboxCounts[folder.key];
               return (
                 <button
                   key={folder.key}
@@ -621,7 +649,9 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
                     <folder.icon size={15} />
                     {folder.label}
                   </span>
-                  <span className="folder-count">{count ?? ""}</span>
+                  <span className="folder-count">
+                    {count === null ? "" : count}
+                  </span>
                 </button>
               );
             })}

@@ -20,6 +20,7 @@ from app.schemas.common import ActionState
 from app.schemas.thread import (
     ComposeMode,
     ComposeThreadRequest,
+    MailboxCountsResponse,
     MailboxKey,
     ThreadDetail,
     ThreadInlineAsset,
@@ -208,6 +209,20 @@ class GoogleWorkspaceClient:
             next_page_token=next_page_token,
             has_more=next_page_token is not None,
             total_count=total_count,
+        )
+
+    def get_gmail_mailbox_counts(self, access_token: str) -> MailboxCountsResponse:
+        label_ids = ("INBOX", "SENT", "TRASH", "SPAM")
+        counts_by_label = {
+            label_id: self._get_gmail_label_threads_total(access_token, label_id)
+            for label_id in label_ids
+        }
+        return MailboxCountsResponse(
+            inbox=counts_by_label.get("INBOX"),
+            sent=counts_by_label.get("SENT"),
+            archive=None,
+            trash=counts_by_label.get("TRASH"),
+            junk=counts_by_label.get("SPAM"),
         )
 
     def get_gmail_thread_summary(
@@ -698,6 +713,25 @@ class GoogleWorkspaceClient:
 
     def _parse_result_size_estimate(self, payload: dict[str, Any]) -> int | None:
         raw_value = payload.get("resultSizeEstimate")
+        if raw_value is None:
+            return None
+        try:
+            return int(raw_value)
+        except (TypeError, ValueError):
+            return None
+
+    def _get_gmail_label_threads_total(
+        self, access_token: str, label_id: str
+    ) -> int | None:
+        payload = self._request(
+            "GET",
+            f"{GMAIL_API_BASE}/labels/{label_id}",
+            access_token=access_token,
+        )
+        return self._parse_label_threads_total(payload)
+
+    def _parse_label_threads_total(self, payload: dict[str, Any]) -> int | None:
+        raw_value = payload.get("threadsTotal")
         if raw_value is None:
             return None
         try:
