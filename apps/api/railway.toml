@@ -3,3 +3,6 @@ builder = "DOCKERFILE"
 
 [deploy]
 healthcheckPath = "/health"
+
+[[deploy.volumes]]
+mountPoint = "/data"
