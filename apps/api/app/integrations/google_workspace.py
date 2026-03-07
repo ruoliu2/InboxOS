@@ -231,7 +231,6 @@ class GoogleWorkspaceClient:
         headers = self._headers_map(
             latest_message.get("payload", {}).get("headers", [])
         )
-        sent_at = datetime.now(UTC)
         message = EmailMessage()
 
         if payload.mode == ComposeMode.REPLY:
@@ -283,21 +282,17 @@ class GoogleWorkspaceClient:
         if payload.mode in (ComposeMode.REPLY, ComposeMode.REPLY_ALL):
             send_payload["threadId"] = thread_id
 
-        response = self._request(
+        self._request(
             "POST",
             f"{GMAIL_API_BASE}/messages/send",
             access_token=access_token,
             json=send_payload,
         )
 
+        refetched_thread = self.get_gmail_thread(access_token, thread_id)
         return GmailComposeResult(
-            thread=self.get_gmail_thread(access_token, thread_id),
-            sent_message=ThreadMessage(
-                id=str(response.get("id") or ""),
-                sender=account_email,
-                sent_at=sent_at,
-                body=message_body,
-            ),
+            thread=refetched_thread,
+            sent_message=refetched_thread.messages[-1],
         )
 
     def send_gmail_reply(

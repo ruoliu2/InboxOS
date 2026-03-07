@@ -34,8 +34,7 @@ class SyncService:
         }
 
         try:
-            effective_account = payload.account_email or account_email
-            threads = self.mail_adapter.sync_threads(effective_account)
+            threads = self.mail_adapter.sync_threads(account_email)
             self.store.set_threads(threads)
 
             for thread in threads:

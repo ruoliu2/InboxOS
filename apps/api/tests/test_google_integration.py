@@ -9,6 +9,8 @@ from app.integrations.google_workspace import GoogleAPIError
 from app.schemas.calendar import CalendarEvent
 from app.schemas.common import ActionState
 from app.schemas.thread import (
+    ComposeMode,
+    ComposeThreadRequest,
     ThreadDetail,
     ThreadMessage,
     ThreadSummary,
@@ -826,6 +828,76 @@ def test_google_client_lists_thread_summaries_without_full_thread_hydration(
     assert page.threads[0].id == "thread-1"
     assert page.threads[0].subject == "First subject"
     assert page.threads[0].participants[0] == "founder@example.com"
+
+
+def test_google_client_compose_uses_refetched_sent_message(monkeypatch):
+    google_client = get_google_workspace_client()
+    sent_thread = ThreadDetail(
+        id="thread-1",
+        subject="Launch plan",
+        snippet="Latest reply",
+        participants=["founder@example.com", "user@gmail.com"],
+        last_message_at=datetime.now(UTC),
+        action_states=[ActionState.FYI],
+        messages=[
+            ThreadMessage(
+                id="message-older",
+                sender="founder@example.com",
+                sent_at=datetime.now(UTC) - timedelta(hours=1),
+                body="Can you confirm?",
+            ),
+            ThreadMessage(
+                id="message-sent",
+                sender="user@gmail.com",
+                sent_at=datetime.now(UTC),
+                body="Confirmed.",
+            ),
+        ],
+        analysis=None,
+    )
+
+    thread_payload = {
+        "id": "thread-1",
+        "messages": [
+            {
+                "id": "message-older",
+                "payload": {
+                    "headers": [
+                        {"name": "From", "value": "Founder <founder@example.com>"},
+                        {"name": "To", "value": "user@gmail.com"},
+                        {"name": "Subject", "value": "Launch plan"},
+                        {"name": "Message-Id", "value": "<message-older@example.com>"},
+                    ]
+                },
+            }
+        ],
+    }
+
+    monkeypatch.setattr(
+        google_client,
+        "_get_gmail_thread_payload",
+        lambda access_token, thread_id: thread_payload,
+    )
+    monkeypatch.setattr(
+        google_client,
+        "get_gmail_thread",
+        lambda access_token, thread_id: sent_thread,
+    )
+    monkeypatch.setattr(
+        google_client,
+        "_request",
+        lambda method, url, **kwargs: {"id": "gmail-api-message-id"},
+    )
+
+    result = google_client.compose_gmail_thread(
+        "access-token",
+        account_email="user@gmail.com",
+        thread_id="thread-1",
+        payload=ComposeThreadRequest(mode=ComposeMode.REPLY, body="Confirmed."),
+    )
+
+    assert result.thread == sent_thread
+    assert result.sent_message == sent_thread.messages[-1]
 
 
 def test_google_client_returns_total_count_for_empty_thread_page(monkeypatch):

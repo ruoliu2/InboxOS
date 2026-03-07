@@ -1,3 +1,6 @@
+from app.services.dependencies import get_task_store
+
+
 def _sync(client):
     response = client.post("/sync/start", json={})
     assert response.status_code == 200
@@ -16,6 +19,7 @@ def test_sync_and_thread_list(authenticated_client):
 
 def test_analyze_creates_deadline_task(authenticated_client):
     _sync(authenticated_client)
+    get_task_store().clear()
 
     response = authenticated_client.post("/threads/thr_1001/analyze")
     assert response.status_code == 200
@@ -26,6 +30,27 @@ def test_analyze_creates_deadline_task(authenticated_client):
 
     tasks = authenticated_client.get("/tasks").json()
     assert any(task["thread_id"] == "thr_1001" for task in tasks)
+
+
+def test_analyze_requires_authentication(client):
+    response = client.post("/threads/thr_1001/analyze")
+
+    assert response.status_code == 401
+
+
+def test_sync_ignores_payload_account_override(authenticated_client):
+    response = authenticated_client.post(
+        "/sync/start",
+        json={"account_email": "attacker@example.com"},
+    )
+    assert response.status_code == 200
+
+    threads = authenticated_client.get("/threads").json()
+
+    assert any("user@gmail.com" in thread["participants"] for thread in threads)
+    assert all(
+        "attacker@example.com" not in thread["participants"] for thread in threads
+    )
 
 
 def test_reply_updates_thread_for_mail_ui(authenticated_client):
