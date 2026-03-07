@@ -57,7 +57,8 @@ E1 --> F1["Thread refreshes in place"]
 
 ```bash
 cp .env.example .env
-# Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI in .env.
+# Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env.
+# GOOGLE_REDIRECT_URI is optional locally and defaults to http://localhost:8000/auth/google/callback.
 # Enable Gmail API and Google Calendar API in the same Google Cloud project.
 # Optionally set SESSION_DB_PATH and GMAIL_CACHE_DB_PATH to persistent storage.
 
@@ -129,20 +130,30 @@ docker compose up --build
 
 ## Deploy
 
+Production deploys run from the dedicated branch `codex/deploy-vercel-railway`, which is checked out in a sibling worktree. Update that branch by merging `origin/main` into it from the deploy worktree, then push the merge commit.
+
 ### Web on Vercel
 
+- production branch: `codex/deploy-vercel-railway`
 - project root: `apps/web`
 - build command: `bun run build`
 - start command: `bun run start`
-- env: `NEXT_PUBLIC_API_BASE_URL`
+- enable source files outside the root directory because `apps/web` imports from `packages/*`
+- env: `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_SESSION_COOKIE_NAME`
 
 ### API on Railway
 
+- production branch: `codex/deploy-vercel-railway`
 - service root: `apps/api`
-- deploy with `apps/api/Dockerfile` or native Python build
+- deploy with `apps/api/Dockerfile`
 - expose port `8000`
-- set env vars from `.env.example`
-- put `SESSION_DB_PATH` and `GMAIL_CACHE_DB_PATH` on persistent storage if sessions and mailbox cache should survive container replacement
+- attach a persistent volume at `/data`
+- set `SESSION_DB_PATH=/data/auth_sessions.sqlite3`
+- set env vars from `.env.example` plus production overrides for `SESSION_COOKIE_SECURE`, `CORS_ORIGINS`, and `WEB_BASE_URL`
+- optionally put `GMAIL_CACHE_DB_PATH` on persistent storage if mailbox cache should survive container replacement
+- `GOOGLE_REDIRECT_URI` is optional on Railway when `RAILWAY_PUBLIC_DOMAIN` is available, but can still be set explicitly
+
+See [docs/deployment/vercel-railway-runbook.md](./docs/deployment/vercel-railway-runbook.md) for the full provider setup and rollout sequence.
 
 ## Current MVP Status
 

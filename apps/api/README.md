@@ -10,7 +10,12 @@ Required Google settings:
 
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
+
+Optional callback setting:
+
 - `GOOGLE_REDIRECT_URI`
+  - defaults to `http://localhost:8000/auth/google/callback` locally
+  - on Railway, falls back to `RAILWAY_PUBLIC_DOMAIN` when available
 
 Optional persisted state settings:
 

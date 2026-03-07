@@ -70,7 +70,7 @@ class GoogleWorkspaceClient:
         query = urlencode(
             {
                 "client_id": self.settings.google_client_id,
-                "redirect_uri": self.settings.google_redirect_uri,
+                "redirect_uri": self.settings.resolved_google_redirect_uri,
                 "response_type": "code",
                 "scope": " ".join(
                     [
@@ -98,7 +98,7 @@ class GoogleWorkspaceClient:
                 "client_secret": self.settings.google_client_secret,
                 "code": code,
                 "grant_type": "authorization_code",
-                "redirect_uri": self.settings.google_redirect_uri,
+                "redirect_uri": self.settings.resolved_google_redirect_uri,
             },
         )
         return self._parse_token_bundle(payload)
