@@ -16,6 +16,6 @@ The mail workspace uses a direct thread reply endpoint instead of a separate rev
 
 ## Consequences
 
-- the frontend sends replies through `POST /threads/{thread_id}/reply`
+- the frontend sends replies through `POST /gmail/threads/{thread_id}/reply`
 - the backend updates the thread in place and returns the updated thread payload
 - thread reply remains a core part of the mail workspace contract
