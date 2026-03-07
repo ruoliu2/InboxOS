@@ -1,5 +1,4 @@
 import { MailWorkspace } from "@inboxos/features/mail/mail-workspace";
-import { redirectIfUnauthenticated } from "@inboxos/app/routes/auth-guard";
 
 type MailPageProps = {
   searchParams?: {
@@ -7,8 +6,7 @@ type MailPageProps = {
   };
 };
 
-export async function MailPage({ searchParams }: MailPageProps) {
-  await redirectIfUnauthenticated();
+export function MailPage({ searchParams }: MailPageProps) {
   const selectedParam = searchParams?.thread;
   const initialThreadId = Array.isArray(selectedParam)
     ? selectedParam[0]

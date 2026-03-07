@@ -1,7 +1,5 @@
 import { TasksView } from "@inboxos/features/tasks/tasks-view";
-import { redirectIfUnauthenticated } from "@inboxos/app/routes/auth-guard";
 
-export async function TasksPage() {
-  await redirectIfUnauthenticated();
+export function TasksPage() {
   return <TasksView />;
 }
