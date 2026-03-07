@@ -468,7 +468,11 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
       : null;
 
   const accountLabel =
-    session?.account_name ?? session?.account_email ?? "Google account";
+    session?.account_name ??
+    session?.user?.display_name ??
+    session?.account_email ??
+    session?.user?.primary_email ??
+    "Google account";
 
   function focusComposer(mode: ComposeMode) {
     setComposeMode(mode);

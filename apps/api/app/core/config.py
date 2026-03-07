@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -48,9 +49,11 @@ class Settings(BaseSettings):
     gmail_cache_db_path: str = str(
         Path.home() / ".cache" / "inboxos" / "gmail_mailbox_cache.sqlite3"
     )
-    tasks_database_url: str = (
-        f"sqlite:///{Path.home() / '.cache' / 'inboxos' / 'tasks.sqlite3'}"
+    database_url: str = Field(
+        default=f"sqlite:///{Path.home() / '.cache' / 'inboxos' / 'app.sqlite3'}",
+        validation_alias=AliasChoices("DATABASE_URL", "TASKS_DATABASE_URL"),
     )
+    credential_encryption_key: str = Field(min_length=1)
 
     model_config = SettingsConfigDict(
         env_file=(REPO_ROOT / ".env", API_ROOT / ".env"),

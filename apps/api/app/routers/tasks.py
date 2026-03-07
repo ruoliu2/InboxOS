@@ -13,7 +13,7 @@ def list_tasks(
     session: AuthSessionRecord = Depends(get_current_auth_session),
     service: TaskService = Depends(get_task_service),
 ) -> list[TaskItem]:
-    return service.list_tasks(session.account_email)
+    return service.list_tasks(session.user_id)
 
 
 @router.post("/create", response_model=TaskItem)
@@ -22,7 +22,12 @@ def create_task(
     session: AuthSessionRecord = Depends(get_current_auth_session),
     service: TaskService = Depends(get_task_service),
 ) -> TaskItem:
-    return service.create_task(session.account_email, payload)
+    return service.create_task(
+        session.user_id,
+        session.active_linked_account_id,
+        session.provider,
+        payload,
+    )
 
 
 @router.post("/{task_id}/complete", response_model=CompleteTaskResponse)
@@ -32,7 +37,7 @@ def complete_task(
     service: TaskService = Depends(get_task_service),
 ) -> CompleteTaskResponse:
     try:
-        task = service.complete_task(session.account_email, task_id)
+        task = service.complete_task(session.user_id, task_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

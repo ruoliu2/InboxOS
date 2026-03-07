@@ -32,6 +32,8 @@ Set these environment variables in both projects:
 - `NEXT_PUBLIC_API_BASE_URL=https://<railway-domain-for-that-environment>`
 - `NEXT_PUBLIC_SESSION_COOKIE_NAME=inboxos_session`
 
+Do not set Supabase database credentials or service keys in Vercel for the current architecture.
+
 ## Railway
 
 - Git provider repo: `ruoliu2/InboxOS`
@@ -41,7 +43,7 @@ Set these environment variables in both projects:
 - builder: `apps/api/Dockerfile`
 - healthcheck path: `/health`
 - public domain: Railway-generated domain per environment
-- volume mount: `/data` with a separate volume per environment
+- volume mount: optional `/data` only if you want persisted Gmail cache
 - enable `Wait for CI`
 
 Set these environment variables for production:
@@ -49,28 +51,32 @@ Set these environment variables for production:
 - `APP_ENV=prod`
 - `APP_HOST=0.0.0.0`
 - `PORT=8000`
+- `DATABASE_URL=<supabase session pooler url>`
+- `CREDENTIAL_ENCRYPTION_KEY=<secret>`
 - `SESSION_COOKIE_NAME=inboxos_session`
 - `SESSION_COOKIE_SECURE=true`
-- `SESSION_DB_PATH=/data/auth_sessions.sqlite3`
 - `CORS_ORIGINS=https://<vercel-domain>`
 - `WEB_BASE_URL=https://<vercel-domain>`
 - `GOOGLE_REDIRECT_URI=<optional explicit override>`
 - `GOOGLE_CLIENT_ID=<secret>`
 - `GOOGLE_CLIENT_SECRET=<secret>`
+- `GMAIL_CACHE_DB_PATH=/data/gmail_mailbox_cache.sqlite3` if you keep the volume for cache persistence
 
 Set these environment variables for staging:
 
 - `APP_ENV=staging`
 - `APP_HOST=0.0.0.0`
 - `PORT=8000`
+- `DATABASE_URL=<staging supabase session pooler url>`
+- `CREDENTIAL_ENCRYPTION_KEY=<secret>`
 - `SESSION_COOKIE_NAME=inboxos_session`
 - `SESSION_COOKIE_SECURE=true`
-- `SESSION_DB_PATH=/data/auth_sessions.sqlite3`
 - `CORS_ORIGINS=https://<staging-vercel-domain>`
 - `WEB_BASE_URL=https://<staging-vercel-domain>`
 - `GOOGLE_REDIRECT_URI=<optional explicit override>`
 - `GOOGLE_CLIENT_ID=<secret>`
 - `GOOGLE_CLIENT_SECRET=<secret>`
+- `GMAIL_CACHE_DB_PATH=/data/gmail_mailbox_cache.sqlite3` if you keep the volume for cache persistence
 
 If `GOOGLE_REDIRECT_URI` is unset, Railway deployments fall back to `RAILWAY_PUBLIC_DOMAIN` for the callback URL.
 
@@ -99,10 +105,10 @@ On each push to `main` or `staging`, the workflow:
 ## Provisioning Order
 
 1. Push the new `staging` branch so all providers can bind their staging environment to a stable branch.
-2. Create the Railway staging environment or service, enable public networking, add the `/data` volume, and set its staging API variables except the final staging Vercel URL values.
-3. Create the Vercel staging project, set its Production Branch to `staging`, and point `NEXT_PUBLIC_API_BASE_URL` at the staging Railway domain.
-4. Create the Supabase staging project and add its secrets to the GitHub `staging` environment.
-5. After staging is healthy, create the production Railway environment or service on `main`, plus the production Vercel project and production Supabase project.
+2. Create the Supabase staging project and add its secrets to the GitHub `staging` environment.
+3. Create the Railway staging environment or service, enable public networking, optionally add the `/data` volume for Gmail cache, and set its staging API variables except the final staging Vercel URL values.
+4. Create the Vercel staging project, set its Production Branch to `staging`, and point `NEXT_PUBLIC_API_BASE_URL` at the staging Railway domain.
+5. After staging is healthy, create the production Supabase project, production Railway environment or service on `main`, and the production Vercel project.
 6. Update Railway `CORS_ORIGINS` and `WEB_BASE_URL` in each environment to the matching Vercel domain.
 7. Update the Google OAuth client with both Vercel origins and both Railway callback URLs if the same OAuth app is shared across staging and production.
 8. Verify staging from `staging`, then promote the same commit to `main`.
@@ -116,5 +122,5 @@ On each push to `main` or `staging`, the workflow:
 - both deployed web apps reach their matching Railway API without CORS failures
 - Google sign-in completes and redirects back to the matching Vercel web URL in each environment
 - the session cookie is secure and HTTP-only
-- the session survives a Railway redeploy in both environments because SQLite lives on the mounted volume
+- the session survives a Railway redeploy because auth state lives in Supabase
 - Supabase migrations and edge functions land in the matching staging or production project after branch pushes

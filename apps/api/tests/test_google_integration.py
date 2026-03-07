@@ -33,7 +33,7 @@ def build_session(**overrides: object) -> AuthSessionRecord:
     now = datetime.now(UTC)
     values: dict[str, object] = {
         "session_id": "session-1",
-        "provider": "google",
+        "provider": "google_gmail",
         "account_email": "user@gmail.com",
         "account_name": "Inbox User",
         "account_picture": None,
@@ -178,7 +178,11 @@ def test_auth_session_route_reissues_cookie_and_extends_session_expiry(client):
     auth_store = get_auth_store()
     session = build_session(session_expires_at=datetime.now(UTC) + timedelta(minutes=5))
     auth_store.upsert_session(session)
-    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
 
     response = client.get("/auth/session")
 
@@ -202,7 +206,11 @@ def test_expired_app_session_returns_unauthenticated_and_is_deleted(client):
         session_expires_at=datetime.now(UTC) - timedelta(minutes=1),
     )
     auth_store.upsert_session(session)
-    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
 
     response = client.get("/auth/session")
 
@@ -218,7 +226,11 @@ def test_expired_google_access_token_refreshes_session(client, monkeypatch):
         expires_at=datetime.now(UTC) - timedelta(minutes=1),
     )
     auth_store.upsert_session(session)
-    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
 
     google_client = get_google_workspace_client()
     monkeypatch.setattr(
@@ -253,7 +265,11 @@ def test_missing_refresh_token_deletes_expired_session(client):
         expires_at=datetime.now(UTC) - timedelta(minutes=1),
     )
     auth_store.upsert_session(session)
-    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
 
     response = client.get("/auth/session")
 
@@ -266,7 +282,11 @@ def test_refresh_failure_returns_401_and_deletes_session(client, monkeypatch):
     auth_store = get_auth_store()
     session = build_session(expires_at=datetime.now(UTC) - timedelta(minutes=1))
     auth_store.upsert_session(session)
-    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
 
     google_client = get_google_workspace_client()
     monkeypatch.setattr(
@@ -309,7 +329,11 @@ def test_logout_removes_persisted_session_and_clears_cookie(client):
     auth_store = get_auth_store()
     session = build_session()
     auth_store.upsert_session(session)
-    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
 
     response = client.post("/auth/logout")
 
@@ -324,7 +348,11 @@ def test_protected_routes_reissue_cookie(client, monkeypatch):
     auth_store = get_auth_store()
     session = build_session(session_expires_at=datetime.now(UTC) + timedelta(minutes=5))
     auth_store.upsert_session(session)
-    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
 
     google_client = get_google_workspace_client()
     monkeypatch.setattr(
@@ -397,7 +425,11 @@ def test_gmail_route_returns_503_for_disabled_google_service(client, monkeypatch
     auth_store = get_auth_store()
     session = build_session()
     auth_store.upsert_session(session)
-    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
 
     google_client = get_google_workspace_client()
 
@@ -428,7 +460,11 @@ def test_gmail_and_calendar_routes_use_google_client(client, monkeypatch):
     auth_store = get_auth_store()
     session = build_session()
     auth_store.upsert_session(session)
-    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
 
     google_client = get_google_workspace_client()
     monkeypatch.setattr(
@@ -507,7 +543,11 @@ def test_gmail_route_returns_cached_first_page_before_refresh(client, monkeypatc
     auth_store = get_auth_store()
     session = build_session()
     auth_store.upsert_session(session)
-    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
 
     cache = get_gmail_mailbox_cache()
     cache.store_thread_page(
@@ -559,7 +599,11 @@ def test_gmail_route_returns_cached_empty_first_page_with_total_count(
     auth_store = get_auth_store()
     session = build_session()
     auth_store.upsert_session(session)
-    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
 
     cache = get_gmail_mailbox_cache()
     cache.store_thread_page(
@@ -632,7 +676,11 @@ def test_gmail_route_forwards_pagination_options(client, monkeypatch):
     auth_store = get_auth_store()
     session = build_session()
     auth_store.upsert_session(session)
-    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
 
     google_client = get_google_workspace_client()
     captured: dict[str, object] = {}
@@ -677,7 +725,11 @@ def test_gmail_route_forwards_mailbox_and_unread_filters(client, monkeypatch):
     auth_store = get_auth_store()
     session = build_session()
     auth_store.upsert_session(session)
-    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
 
     google_client = get_google_workspace_client()
     captured: dict[str, object] = {}
@@ -702,7 +754,11 @@ def test_compose_route_updates_detail_cache_and_response(client, monkeypatch):
     auth_store = get_auth_store()
     session = build_session()
     auth_store.upsert_session(session)
-    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
 
     google_client = get_google_workspace_client()
     thread = ThreadDetail(
@@ -754,7 +810,11 @@ def test_thread_action_route_invalidates_cached_pages(client, monkeypatch):
     auth_store = get_auth_store()
     session = build_session()
     auth_store.upsert_session(session)
-    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
 
     cache = get_gmail_mailbox_cache()
     cache.store_thread_page(
@@ -813,7 +873,11 @@ def test_calendar_mutation_routes_use_google_client(client, monkeypatch):
     auth_store = get_auth_store()
     session = build_session()
     auth_store.upsert_session(session)
-    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
 
     google_client = get_google_workspace_client()
     monkeypatch.setattr(
@@ -1163,7 +1227,11 @@ def test_calendar_route_preserves_explicit_time_window(client, monkeypatch):
     auth_store = get_auth_store()
     session = build_session()
     auth_store.upsert_session(session)
-    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
 
     google_client = get_google_workspace_client()
     captured: dict[str, datetime] = {}
@@ -1721,7 +1789,11 @@ def test_opening_gmail_thread_updates_detail_cache(client, monkeypatch):
     auth_store = get_auth_store()
     session = build_session()
     auth_store.upsert_session(session)
-    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
 
     google_client = get_google_workspace_client()
     thread = ThreadDetail(

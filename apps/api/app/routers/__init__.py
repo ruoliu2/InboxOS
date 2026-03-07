@@ -1,3 +1,3 @@
-from app.routers import auth, calendar, gmail, health, tasks
+from app.routers import accounts, auth, calendar, gmail, health, tasks
 
-__all__ = ["auth", "calendar", "gmail", "health", "tasks"]
+__all__ = ["accounts", "auth", "calendar", "gmail", "health", "tasks"]

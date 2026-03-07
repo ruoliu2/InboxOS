@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging
-from app.routers import auth, calendar, gmail, health, tasks
+from app.routers import accounts, auth, calendar, gmail, health, tasks
 
 configure_logging()
 settings = get_settings()
@@ -27,6 +27,7 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
+app.include_router(accounts.router, prefix="/accounts", tags=["accounts"])
 app.include_router(gmail.router, prefix="/gmail", tags=["gmail"])
 app.include_router(calendar.router, prefix="/calendar", tags=["calendar"])
 app.include_router(tasks.router, prefix="/tasks", tags=["tasks"])

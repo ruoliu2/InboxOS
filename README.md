@@ -51,23 +51,25 @@ E1 --> F1["Thread refreshes in place"]
 - `uv`
 - Node 20+
 - `bun`
-- Docker optional
+- Docker
+- Supabase CLI
 
 ### Backend
 
 ```bash
 cp .env.example .env
 # Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env.
-# GOOGLE_REDIRECT_URI is optional locally and defaults to http://localhost:8000/auth/google/callback.
+# Set CREDENTIAL_ENCRYPTION_KEY in .env.
 # Enable Gmail API and Google Calendar API in the same Google Cloud project.
-# Optionally set SESSION_DB_PATH and GMAIL_CACHE_DB_PATH to persistent storage.
+
+supabase start
 
 cd apps/api
 uv sync --group dev
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Local auth sessions are now persisted in SQLite at `SESSION_DB_PATH` and survive API reloads and browser restarts until the configured TTL expires. For deployed environments, put `SESSION_DB_PATH` on persistent storage or sessions will still be lost on container or host replacement.
+Local app state now defaults to Supabase Postgres at `127.0.0.1:54322`. Reset the local database with `supabase db reset` after schema changes or when you want a clean local environment.
 
 ### Web
 
@@ -125,8 +127,17 @@ bun run build
 docker compose up --build
 ```
 
+- This starts the web app, API, and a local Postgres container that applies the SQL in `supabase/migrations` and `supabase/seed.sql` automatically.
+- It is local-only. Railway and Vercel do not use `docker-compose.yml`.
+- Do not run `supabase start` at the same time as `docker compose up`, because both want local database port `54322`.
+- Compose uses its own internal database URL by default, so your root `.env` `DATABASE_URL` will not override the container-to-container connection.
+- Google OAuth still requires `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in your local `.env`; Compose now passes those through to the API container.
+- If you want to reset the Compose-managed database, run `docker compose down -v` or `make down-v`.
+- If you want Supabase Studio or the full Supabase CLI stack locally, use `supabase start` instead of Docker Compose.
+
 - API: [http://localhost:8000](http://localhost:8000)
 - Web: [http://localhost:3000](http://localhost:3000)
+- Database: copy the local Postgres connection string from `supabase status -o env`
 
 ## Deploy
 
@@ -152,9 +163,10 @@ Deploys are branch-driven:
 - service root: `apps/api`
 - deploy with `apps/api/Dockerfile`
 - expose port `8000`
-- attach a separate persistent volume at `/data` in each environment
-- set `SESSION_DB_PATH=/data/auth_sessions.sqlite3`
+- set `DATABASE_URL` to the matching Supabase Postgres connection string for each environment
+- set `CREDENTIAL_ENCRYPTION_KEY` in Railway for each environment
 - set env vars from `.env.example` plus environment-specific overrides for `APP_ENV`, `SESSION_COOKIE_SECURE`, `CORS_ORIGINS`, and `WEB_BASE_URL`
+- keep the `/data` volume only if `GMAIL_CACHE_DB_PATH` should survive container replacement
 - optionally put `GMAIL_CACHE_DB_PATH` on persistent storage if mailbox cache should survive container replacement
 - `GOOGLE_REDIRECT_URI` is optional on Railway when `RAILWAY_PUBLIC_DOMAIN` is available, but can still be set explicitly
 

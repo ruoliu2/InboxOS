@@ -1,0 +1,2 @@
+-- Local seed file intentionally empty.
+-- Keep this file so `supabase db reset` succeeds without extra setup.

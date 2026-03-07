@@ -16,15 +16,11 @@ from app.schemas.task import TaskItem
 
 
 class TaskStore(Protocol):
-    def list_tasks(self, account_email: str) -> list[TaskItem]: ...
+    def list_tasks(self, user_id: str) -> list[TaskItem]: ...
 
-    def get_task(self, account_email: str, task_id: str) -> TaskItem | None: ...
+    def get_task(self, user_id: str, task_id: str) -> TaskItem | None: ...
 
-    def upsert_task(self, account_email: str, task: TaskItem) -> None: ...
-
-    def list_open_titles_for_thread(
-        self, account_email: str, thread_id: str
-    ) -> set[str]: ...
+    def upsert_task(self, user_id: str, task: TaskItem) -> None: ...
 
     def clear(self) -> None: ...
 
@@ -41,56 +37,60 @@ class SQLiteTaskStore:
         self._lock = Lock()
         self._init_db()
 
-    def list_tasks(self, account_email: str) -> list[TaskItem]:
+    def list_tasks(self, user_id: str) -> list[TaskItem]:
         with self._lock, self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT id, title, status, due_at, thread_id, category, created_at,
-                       completed_at
+                SELECT id, title, status, due_at, linked_account_id, conversation_id,
+                       thread_id, category, created_at, completed_at
                 FROM tasks
-                WHERE account_email = ?
+                WHERE user_id = ?
                 ORDER BY created_at DESC
                 """,
-                (account_email,),
+                (user_id,),
             ).fetchall()
         return [self._row_to_task(row) for row in rows]
 
-    def get_task(self, account_email: str, task_id: str) -> TaskItem | None:
+    def get_task(self, user_id: str, task_id: str) -> TaskItem | None:
         with self._lock, self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT id, title, status, due_at, thread_id, category, created_at,
-                       completed_at
+                SELECT id, title, status, due_at, linked_account_id, conversation_id,
+                       thread_id, category, created_at, completed_at
                 FROM tasks
-                WHERE account_email = ? AND id = ?
+                WHERE user_id = ? AND id = ?
                 """,
-                (account_email, task_id),
+                (user_id, task_id),
             ).fetchone()
         if row is None:
             return None
         return self._row_to_task(row)
 
-    def upsert_task(self, account_email: str, task: TaskItem) -> None:
+    def upsert_task(self, user_id: str, task: TaskItem) -> None:
         with self._lock, self._connect() as connection:
             connection.execute(
                 """
                 INSERT INTO tasks (
                     id,
-                    account_email,
+                    user_id,
                     title,
                     status,
                     due_at,
+                    linked_account_id,
+                    conversation_id,
                     thread_id,
                     category,
                     created_at,
                     completed_at,
                     updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
-                    account_email = excluded.account_email,
+                    user_id = excluded.user_id,
                     title = excluded.title,
                     status = excluded.status,
                     due_at = excluded.due_at,
+                    linked_account_id = excluded.linked_account_id,
+                    conversation_id = excluded.conversation_id,
                     thread_id = excluded.thread_id,
                     category = excluded.category,
                     created_at = excluded.created_at,
@@ -99,10 +99,12 @@ class SQLiteTaskStore:
                 """,
                 (
                     task.id,
-                    account_email,
+                    user_id,
                     task.title,
                     task.status,
                     self._serialize_datetime(task.due_at),
+                    task.linked_account_id,
+                    task.conversation_id,
                     task.thread_id,
                     task.category,
                     task.created_at.isoformat(),
@@ -111,20 +113,6 @@ class SQLiteTaskStore:
                 ),
             )
             connection.commit()
-
-    def list_open_titles_for_thread(
-        self, account_email: str, thread_id: str
-    ) -> set[str]:
-        with self._lock, self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT title
-                FROM tasks
-                WHERE account_email = ? AND thread_id = ? AND status = 'open'
-                """,
-                (account_email, thread_id),
-            ).fetchall()
-        return {str(row["title"]) for row in rows}
 
     def clear(self) -> None:
         with self._lock, self._connect() as connection:
@@ -137,10 +125,12 @@ class SQLiteTaskStore:
                 """
                 CREATE TABLE IF NOT EXISTS tasks (
                     id TEXT PRIMARY KEY,
-                    account_email TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
                     title TEXT NOT NULL,
                     status TEXT NOT NULL,
                     due_at TEXT,
+                    linked_account_id TEXT,
+                    conversation_id TEXT,
                     thread_id TEXT,
                     category TEXT,
                     created_at TEXT NOT NULL,
@@ -151,16 +141,22 @@ class SQLiteTaskStore:
             )
             connection.execute(
                 """
-                CREATE INDEX IF NOT EXISTS idx_tasks_account_created
-                ON tasks (account_email, created_at DESC)
+                CREATE INDEX IF NOT EXISTS idx_tasks_user_created
+                ON tasks (user_id, created_at DESC)
                 """
             )
             connection.execute(
                 """
-                CREATE INDEX IF NOT EXISTS idx_tasks_account_thread_status
-                ON tasks (account_email, thread_id, status)
+                CREATE INDEX IF NOT EXISTS idx_tasks_user_conversation_status
+                ON tasks (user_id, conversation_id, status)
                 """
             )
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(tasks)").fetchall()
+            }
+            if "thread_id" not in columns:
+                connection.execute("ALTER TABLE tasks ADD COLUMN thread_id TEXT")
             connection.commit()
 
     @contextmanager
@@ -178,6 +174,8 @@ class SQLiteTaskStore:
             title=row["title"],
             status=row["status"],
             due_at=self._parse_optional_datetime(row["due_at"]),
+            linked_account_id=row["linked_account_id"],
+            conversation_id=row["conversation_id"],
             thread_id=row["thread_id"],
             category=row["category"],
             created_at=self._parse_datetime(row["created_at"]),
@@ -200,61 +198,67 @@ class PostgresTaskStore:
         self._lock = Lock()
         self._init_db()
 
-    def list_tasks(self, account_email: str) -> list[TaskItem]:
+    def list_tasks(self, user_id: str) -> list[TaskItem]:
         with self._lock, self._connect() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT id, title, status, due_at, thread_id, category,
-                           created_at, completed_at
+                    SELECT id, title, status, due_at, linked_account_id,
+                           conversation_id, thread_id, category, created_at,
+                           completed_at
                     FROM tasks
-                    WHERE account_email = %s
+                    WHERE user_id = %s
                     ORDER BY created_at DESC
                     """,
-                    (account_email,),
+                    (user_id,),
                 )
                 rows = cursor.fetchall()
         return [self._row_to_task(row) for row in rows]
 
-    def get_task(self, account_email: str, task_id: str) -> TaskItem | None:
+    def get_task(self, user_id: str, task_id: str) -> TaskItem | None:
         with self._lock, self._connect() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT id, title, status, due_at, thread_id, category,
-                           created_at, completed_at
+                    SELECT id, title, status, due_at, linked_account_id,
+                           conversation_id, thread_id, category, created_at,
+                           completed_at
                     FROM tasks
-                    WHERE account_email = %s AND id = %s
+                    WHERE user_id = %s AND id = %s
                     """,
-                    (account_email, task_id),
+                    (user_id, task_id),
                 )
                 row = cursor.fetchone()
         if row is None:
             return None
         return self._row_to_task(row)
 
-    def upsert_task(self, account_email: str, task: TaskItem) -> None:
+    def upsert_task(self, user_id: str, task: TaskItem) -> None:
         with self._lock, self._connect() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
                     INSERT INTO tasks (
                         id,
-                        account_email,
+                        user_id,
                         title,
                         status,
                         due_at,
+                        linked_account_id,
+                        conversation_id,
                         thread_id,
                         category,
                         created_at,
                         completed_at,
                         updated_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO UPDATE SET
-                        account_email = excluded.account_email,
+                        user_id = excluded.user_id,
                         title = excluded.title,
                         status = excluded.status,
                         due_at = excluded.due_at,
+                        linked_account_id = excluded.linked_account_id,
+                        conversation_id = excluded.conversation_id,
                         thread_id = excluded.thread_id,
                         category = excluded.category,
                         created_at = excluded.created_at,
@@ -263,10 +267,12 @@ class PostgresTaskStore:
                     """,
                     (
                         task.id,
-                        account_email,
+                        user_id,
                         task.title,
                         task.status,
                         task.due_at,
+                        task.linked_account_id,
+                        task.conversation_id,
                         task.thread_id,
                         task.category,
                         task.created_at,
@@ -275,22 +281,6 @@ class PostgresTaskStore:
                     ),
                 )
             connection.commit()
-
-    def list_open_titles_for_thread(
-        self, account_email: str, thread_id: str
-    ) -> set[str]:
-        with self._lock, self._connect() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT title
-                    FROM tasks
-                    WHERE account_email = %s AND thread_id = %s AND status = 'open'
-                    """,
-                    (account_email, thread_id),
-                )
-                rows = cursor.fetchall()
-        return {str(row["title"]) for row in rows}
 
     def clear(self) -> None:
         with self._lock, self._connect() as connection:
@@ -305,28 +295,36 @@ class PostgresTaskStore:
                     """
                     CREATE TABLE IF NOT EXISTS tasks (
                         id TEXT PRIMARY KEY,
-                        account_email TEXT NOT NULL,
+                        user_id TEXT NOT NULL,
                         title TEXT NOT NULL,
                         status TEXT NOT NULL,
                         due_at TIMESTAMPTZ NULL,
+                        linked_account_id TEXT NULL,
+                        conversation_id TEXT NULL,
                         thread_id TEXT NULL,
                         category TEXT NULL,
                         created_at TIMESTAMPTZ NOT NULL,
                         completed_at TIMESTAMPTZ NULL,
                         updated_at TIMESTAMPTZ NOT NULL
                     )
+                """
+                )
+                cursor.execute(
+                    """
+                    ALTER TABLE tasks
+                    ADD COLUMN IF NOT EXISTS thread_id TEXT NULL
                     """
                 )
                 cursor.execute(
                     """
-                    CREATE INDEX IF NOT EXISTS idx_tasks_account_created
-                    ON tasks (account_email, created_at DESC)
+                    CREATE INDEX IF NOT EXISTS idx_tasks_user_created
+                    ON tasks (user_id, created_at DESC)
                     """
                 )
                 cursor.execute(
                     """
-                    CREATE INDEX IF NOT EXISTS idx_tasks_account_thread_status
-                    ON tasks (account_email, thread_id, status)
+                    CREATE INDEX IF NOT EXISTS idx_tasks_user_conversation_status
+                    ON tasks (user_id, conversation_id, status)
                     """
                 )
             connection.commit()
@@ -345,6 +343,8 @@ class PostgresTaskStore:
             title=str(row["title"]),
             status=str(row["status"]),
             due_at=row["due_at"],
+            linked_account_id=row["linked_account_id"],
+            conversation_id=row["conversation_id"],
             thread_id=row["thread_id"],
             category=row["category"],
             created_at=row["created_at"],

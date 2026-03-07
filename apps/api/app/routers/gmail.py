@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
 from app.integrations.google_workspace import GoogleAPIError, GoogleWorkspaceClient
@@ -11,14 +13,21 @@ from app.schemas.thread import (
     ThreadActionRequest,
     ThreadActionResponse,
     ThreadDetail,
+    ThreadSummary,
     ThreadSummaryPage,
 )
 from app.services.dependencies import (
+    get_conversation_store,
     get_current_auth_session,
     get_gmail_mailbox_cache,
     get_google_workspace_client,
 )
 from app.storage.auth_store import AuthSessionRecord
+from app.storage.conversation_store import (
+    ConversationStore,
+    build_insight_record,
+    new_conversation_record,
+)
 from app.storage.mailbox_cache import GmailMailboxCache
 
 router = APIRouter()
@@ -54,6 +63,58 @@ def refresh_gmail_thread_page_cache(
     )
 
 
+def require_active_google_account(session: AuthSessionRecord) -> tuple[str, str]:
+    if not session.account_email or not session.access_token:
+        raise HTTPException(
+            status_code=401,
+            detail="An active linked Google account is required.",
+        )
+    return session.account_email, session.access_token
+
+
+def persist_threads(
+    session: AuthSessionRecord,
+    store: ConversationStore,
+    threads: list[ThreadSummary | ThreadDetail],
+    *,
+    source_folder: str | None,
+) -> None:
+    if (
+        not session.user_id
+        or not session.active_linked_account_id
+        or not session.provider
+    ):
+        return
+    for thread in threads:
+        existing = store.get_by_external_id(
+            session.user_id,
+            session.active_linked_account_id,
+            thread.id,
+        )
+        conversation = existing or new_conversation_record(
+            user_id=session.user_id,
+            linked_account_id=session.active_linked_account_id,
+            provider=session.provider,
+            external_conversation_id=thread.id,
+            title=thread.subject,
+            preview=thread.snippet,
+            last_message_at=thread.last_message_at,
+            source_folder=source_folder,
+        )
+        conversation.title = thread.subject
+        conversation.preview = thread.snippet
+        conversation.last_message_at = thread.last_message_at
+        conversation.source_folder = source_folder or conversation.source_folder
+        conversation.updated_at = datetime.now(UTC)
+        conversation = store.upsert_conversation(conversation)
+        store.upsert_insight(
+            build_insight_record(
+                conversation_id=conversation.id,
+                thread=thread,
+            )
+        )
+
+
 @router.get("/threads", response_model=ThreadSummaryPage)
 def list_gmail_threads(
     background_tasks: BackgroundTasks,
@@ -65,22 +126,30 @@ def list_gmail_threads(
     session: AuthSessionRecord = Depends(get_current_auth_session),
     client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
     cache: GmailMailboxCache = Depends(get_gmail_mailbox_cache),
+    conversation_store: ConversationStore = Depends(get_conversation_store),
 ) -> ThreadSummaryPage:
+    account_email, access_token = require_active_google_account(session)
     query = (q or "").strip() or None
 
     if page_token is None and query is None:
         cached_page = cache.get_thread_page(
-            session.account_email,
+            account_email,
             mailbox_key=mailbox.value,
             unread_only=unread_only,
             query=query,
             page_key=None,
         )
         if cached_page is not None:
+            persist_threads(
+                session,
+                conversation_store,
+                cached_page.threads,
+                source_folder=mailbox.value,
+            )
             background_tasks.add_task(
                 refresh_gmail_thread_page_cache,
-                session.account_email,
-                session.access_token,
+                account_email,
+                access_token,
                 page_size,
                 mailbox,
                 unread_only,
@@ -92,7 +161,7 @@ def list_gmail_threads(
 
     try:
         page = client.list_gmail_threads(
-            session.access_token,
+            access_token,
             max_results=page_size,
             page_token=page_token,
             mailbox=mailbox,
@@ -105,12 +174,18 @@ def list_gmail_threads(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     cache.store_thread_page(
-        session.account_email,
+        account_email,
         page=page,
         mailbox_key=mailbox.value,
         unread_only=unread_only,
         query=query,
         page_key=page_token,
+    )
+    persist_threads(
+        session,
+        conversation_store,
+        page.threads,
+        source_folder=mailbox.value,
     )
     return page
 
@@ -120,8 +195,9 @@ def get_gmail_mailbox_counts(
     session: AuthSessionRecord = Depends(get_current_auth_session),
     client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
 ) -> MailboxCountsResponse:
+    _, access_token = require_active_google_account(session)
     try:
-        return client.get_gmail_mailbox_counts(session.access_token)
+        return client.get_gmail_mailbox_counts(access_token)
     except GoogleAPIError as exc:
         raise HTTPException(status_code=exc.app_status_code, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -134,15 +210,23 @@ def get_gmail_thread(
     session: AuthSessionRecord = Depends(get_current_auth_session),
     client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
     cache: GmailMailboxCache = Depends(get_gmail_mailbox_cache),
+    conversation_store: ConversationStore = Depends(get_conversation_store),
 ) -> ThreadDetail:
+    account_email, access_token = require_active_google_account(session)
     try:
-        thread = client.get_gmail_thread(session.access_token, thread_id)
+        thread = client.get_gmail_thread(access_token, thread_id)
     except GoogleAPIError as exc:
         raise HTTPException(status_code=exc.app_status_code, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    cache.upsert_thread_detail(session.account_email, thread)
+    cache.upsert_thread_detail(account_email, thread)
+    persist_threads(
+        session,
+        conversation_store,
+        [thread],
+        source_folder=None,
+    )
     return thread
 
 
@@ -153,11 +237,13 @@ def reply_to_gmail_thread(
     session: AuthSessionRecord = Depends(get_current_auth_session),
     client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
     cache: GmailMailboxCache = Depends(get_gmail_mailbox_cache),
+    conversation_store: ConversationStore = Depends(get_conversation_store),
 ) -> ReplyToThreadResponse:
+    account_email, access_token = require_active_google_account(session)
     try:
         result = client.compose_gmail_thread(
-            session.access_token,
-            account_email=session.account_email,
+            access_token,
+            account_email=account_email,
             thread_id=thread_id,
             payload=ComposeThreadRequest(body=payload.body),
         )
@@ -166,8 +252,14 @@ def reply_to_gmail_thread(
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    cache.invalidate_account_pages(session.account_email)
-    cache.upsert_thread_detail(session.account_email, result.thread)
+    cache.invalidate_account_pages(account_email)
+    cache.upsert_thread_detail(account_email, result.thread)
+    persist_threads(
+        session,
+        conversation_store,
+        [result.thread],
+        source_folder=None,
+    )
     return ReplyToThreadResponse(
         thread=result.thread,
         sent_message=result.sent_message,
@@ -182,11 +274,13 @@ def compose_gmail_thread(
     session: AuthSessionRecord = Depends(get_current_auth_session),
     client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
     cache: GmailMailboxCache = Depends(get_gmail_mailbox_cache),
+    conversation_store: ConversationStore = Depends(get_conversation_store),
 ) -> ComposeThreadResponse:
+    account_email, access_token = require_active_google_account(session)
     try:
         result = client.compose_gmail_thread(
-            session.access_token,
-            account_email=session.account_email,
+            access_token,
+            account_email=account_email,
             thread_id=thread_id,
             payload=payload,
         )
@@ -195,8 +289,14 @@ def compose_gmail_thread(
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    cache.invalidate_account_pages(session.account_email)
-    cache.upsert_thread_detail(session.account_email, result.thread)
+    cache.invalidate_account_pages(account_email)
+    cache.upsert_thread_detail(account_email, result.thread)
+    persist_threads(
+        session,
+        conversation_store,
+        [result.thread],
+        source_folder=None,
+    )
     return ComposeThreadResponse(
         thread=result.thread,
         sent_message=result.sent_message,
@@ -211,10 +311,12 @@ def act_on_gmail_thread(
     session: AuthSessionRecord = Depends(get_current_auth_session),
     client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
     cache: GmailMailboxCache = Depends(get_gmail_mailbox_cache),
+    conversation_store: ConversationStore = Depends(get_conversation_store),
 ) -> ThreadActionResponse:
+    account_email, access_token = require_active_google_account(session)
     try:
         result = client.apply_gmail_thread_action(
-            session.access_token,
+            access_token,
             thread_id=thread_id,
             action=payload.action.value,
         )
@@ -223,11 +325,17 @@ def act_on_gmail_thread(
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    cache.invalidate_account_pages(session.account_email)
+    cache.invalidate_account_pages(account_email)
     if result.thread is None:
-        cache.delete_thread_detail(session.account_email, thread_id)
+        cache.delete_thread_detail(account_email, thread_id)
     else:
-        cache.upsert_thread_detail(session.account_email, result.thread)
+        cache.upsert_thread_detail(account_email, result.thread)
+        persist_threads(
+            session,
+            conversation_store,
+            [result.thread],
+            source_folder=None,
+        )
 
     return ThreadActionResponse(
         thread_id=thread_id,

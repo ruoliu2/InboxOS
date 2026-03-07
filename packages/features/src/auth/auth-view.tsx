@@ -72,6 +72,14 @@ export function AuthView() {
     }
   }
 
+  const linkedAccountCount = session?.linked_accounts?.length ?? 0;
+  const sessionLabel =
+    session?.account_name ??
+    session?.user?.display_name ??
+    session?.account_email ??
+    session?.user?.primary_email ??
+    "your Google account";
+
   return (
     <main className="auth-layout panel-surface">
       <section className="auth-left">
@@ -101,9 +109,15 @@ export function AuthView() {
           <h2>{session?.authenticated ? "Google Connected" : "Sign In"}</h2>
           <p>
             {session?.authenticated
-              ? `Signed in as ${session.account_email ?? "your Google account"}.`
+              ? `Signed in as ${sessionLabel}.`
               : "Use Google OAuth to load your Gmail inbox and primary calendar."}
           </p>
+          {session?.authenticated && linkedAccountCount > 1 ? (
+            <p className="muted">
+              {linkedAccountCount} linked accounts are available in this
+              workspace.
+            </p>
+          ) : null}
 
           {error ? <p className="status error">{error}</p> : null}
 
