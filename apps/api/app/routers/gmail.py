@@ -12,8 +12,8 @@ from app.services.dependencies import (
     get_gmail_mailbox_cache,
     get_google_workspace_client,
 )
+from app.storage.auth_store import AuthSessionRecord
 from app.storage.mailbox_cache import GmailMailboxCache
-from app.storage.store import AuthSessionRecord
 
 router = APIRouter()
 

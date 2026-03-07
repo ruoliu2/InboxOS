@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     web_base_url: str = "http://localhost:3000"
     session_cookie_name: str = "inboxos_session"
     session_cookie_secure: bool = False
+    session_db_path: str = str(
+        Path.home() / ".cache" / "inboxos" / "auth_sessions.sqlite3"
+    )
+    session_ttl_seconds: int = 60 * 60 * 24 * 30
+    oauth_state_ttl_seconds: int = 60 * 15
     google_client_id: str | None = None
     google_client_secret: str | None = None
     google_redirect_uri: str = "http://localhost:8000/auth/google/callback"
