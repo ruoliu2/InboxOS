@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CalendarPlus,
   ChevronLeft,
@@ -9,7 +9,14 @@ import {
   MapPin,
 } from "lucide-react";
 
+import { api } from "@inboxos/lib/api";
+import {
+  AuthSessionResponse,
+  CalendarEvent as ApiCalendarEvent,
+} from "@inboxos/types";
+
 type ViewMode = "day" | "week" | "month";
+type EventTone = "blue" | "green" | "amber" | "rose";
 
 type CalendarEvent = {
   id: string;
@@ -17,7 +24,10 @@ type CalendarEvent = {
   startsAt: Date;
   endsAt: Date;
   location: string;
-  tone: "blue" | "green" | "amber" | "rose";
+  description: string;
+  isAllDay: boolean;
+  htmlLink: string | null;
+  tone: EventTone;
 };
 
 const calendarViews: ViewMode[] = ["day", "week", "month"];
@@ -28,83 +38,17 @@ const slotsPerHour = 2;
 const scheduleSlotMinutes = 60 / slotsPerHour;
 const scheduleRowHeight = 34;
 const totalScheduleSlots = (scheduleEndHour - scheduleStartHour) * slotsPerHour;
-
-const seedDate = new Date();
-const seedYear = seedDate.getFullYear();
-const seedMonth = seedDate.getMonth();
-
-const demoEvents: CalendarEvent[] = [
-  {
-    id: "e-1",
-    title: "Team Sync",
-    startsAt: new Date(seedYear, seedMonth, 4, 9, 0),
-    endsAt: new Date(seedYear, seedMonth, 4, 9, 45),
-    location: "HQ - Room Polaris",
-    tone: "blue",
-  },
-  {
-    id: "e-2",
-    title: "Design Critique",
-    startsAt: new Date(seedYear, seedMonth, 4, 13, 30),
-    endsAt: new Date(seedYear, seedMonth, 4, 14, 30),
-    location: "Figma Review",
-    tone: "green",
-  },
-  {
-    id: "e-3",
-    title: "Product Roadmap",
-    startsAt: new Date(seedYear, seedMonth, 6, 10, 0),
-    endsAt: new Date(seedYear, seedMonth, 6, 11, 30),
-    location: "Zoom",
-    tone: "amber",
-  },
-  {
-    id: "e-4",
-    title: "1:1 with PM",
-    startsAt: new Date(seedYear, seedMonth, 9, 15, 0),
-    endsAt: new Date(seedYear, seedMonth, 9, 15, 30),
-    location: "Cafe Atrium",
-    tone: "rose",
-  },
-  {
-    id: "e-5",
-    title: "Release Readiness",
-    startsAt: new Date(seedYear, seedMonth, 12, 11, 0),
-    endsAt: new Date(seedYear, seedMonth, 12, 12, 0),
-    location: "Ops War Room",
-    tone: "blue",
-  },
-  {
-    id: "e-6",
-    title: "Customer Demo",
-    startsAt: new Date(seedYear, seedMonth, 15, 16, 0),
-    endsAt: new Date(seedYear, seedMonth, 15, 17, 0),
-    location: "Client Portal",
-    tone: "green",
-  },
-  {
-    id: "e-7",
-    title: "Sprint Planning",
-    startsAt: new Date(seedYear, seedMonth, 20, 9, 30),
-    endsAt: new Date(seedYear, seedMonth, 20, 11, 0),
-    location: "Board Room",
-    tone: "amber",
-  },
-  {
-    id: "e-8",
-    title: "Marketing Launch",
-    startsAt: new Date(seedYear, seedMonth, 23, 14, 0),
-    endsAt: new Date(seedYear, seedMonth, 23, 15, 0),
-    location: "Launch Standup",
-    tone: "rose",
-  },
-];
+const toneScale: EventTone[] = ["blue", "green", "amber", "rose"];
 
 function dateKey(value: Date): string {
   const y = value.getFullYear();
   const m = String(value.getMonth() + 1).padStart(2, "0");
   const d = String(value.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+function startOfDay(value: Date): Date {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
 }
 
 function startOfMonth(value: Date): Date {
@@ -153,7 +97,10 @@ function formatSelectedLabel(value: Date): string {
   });
 }
 
-function formatTimeRange(start: Date, end: Date): string {
+function formatTimeRange(start: Date, end: Date, isAllDay = false): string {
+  if (isAllDay) {
+    return "All day";
+  }
   return `${start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} - ${end.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
 }
 
@@ -186,26 +133,119 @@ function formatViewTitle(
   return formatMonthLabel(visibleMonth);
 }
 
+function toneForEvent(id: string): EventTone {
+  const total = id.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return toneScale[total % toneScale.length];
+}
+
+function normalizeEvent(event: ApiCalendarEvent): CalendarEvent {
+  return {
+    id: event.id,
+    title: event.title,
+    startsAt: new Date(event.starts_at),
+    endsAt: new Date(event.ends_at),
+    location: event.location ?? "Google Calendar",
+    description: event.description ?? "",
+    isAllDay: event.is_all_day,
+    htmlLink: event.html_link,
+    tone: toneForEvent(event.id),
+  };
+}
+
+function eventDays(event: CalendarEvent): Date[] {
+  const days: Date[] = [];
+  const start = startOfDay(event.startsAt);
+  const end = event.isAllDay
+    ? addDays(startOfDay(event.endsAt), -1)
+    : startOfDay(new Date(event.endsAt.getTime() - 1));
+
+  for (
+    let cursor = start;
+    cursor.getTime() <= Math.max(start.getTime(), end.getTime());
+    cursor = addDays(cursor, 1)
+  ) {
+    days.push(new Date(cursor));
+  }
+
+  return days;
+}
+
 export function CalendarWorkspace() {
+  const today = useMemo(() => new Date(), []);
+  const [session, setSession] = useState<AuthSessionResponse | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("week");
-  const [visibleMonth, setVisibleMonth] = useState<Date>(
-    startOfMonth(seedDate),
-  );
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date(seedDate));
+  const [visibleMonth, setVisibleMonth] = useState<Date>(startOfMonth(today));
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date(today));
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchRange = useMemo(() => {
+    const monthStart = startOfMonth(visibleMonth);
+    return {
+      start: addDays(startOfWeek(monthStart), -7),
+      end: addDays(startOfWeek(addMonths(monthStart, 2)), 14),
+    };
+  }, [visibleMonth]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadEvents() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const [nextSession, nextEvents] = await Promise.all([
+          api.getSession(),
+          api.getCalendarEvents(
+            fetchRange.start.toISOString(),
+            fetchRange.end.toISOString(),
+          ),
+        ]);
+        if (!isMounted) {
+          return;
+        }
+        if (!nextSession.authenticated) {
+          window.location.href = "/auth";
+          return;
+        }
+
+        setSession(nextSession);
+        setEvents(nextEvents.map(normalizeEvent));
+      } catch (loadError) {
+        if (isMounted) {
+          setError((loadError as Error).message);
+          setEvents([]);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadEvents();
+    return () => {
+      isMounted = false;
+    };
+  }, [fetchRange.end, fetchRange.start]);
 
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
 
-    for (const event of demoEvents) {
-      const key = dateKey(event.startsAt);
-      const current = map.get(key) ?? [];
-      current.push(event);
-      current.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
-      map.set(key, current);
+    for (const event of events) {
+      for (const day of eventDays(event)) {
+        const key = dateKey(day);
+        const current = map.get(key) ?? [];
+        current.push(event);
+        current.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+        map.set(key, current);
+      }
     }
 
     return map;
-  }, []);
+  }, [events]);
 
   const monthDays = useMemo(() => {
     const first = startOfMonth(visibleMonth);
@@ -217,12 +257,12 @@ export function CalendarWorkspace() {
       return {
         date,
         inMonth: date.getMonth() === visibleMonth.getMonth(),
-        isToday: sameDay(date, seedDate),
+        isToday: sameDay(date, today),
         isSelected: sameDay(date, selectedDate),
         eventCount: (eventsByDay.get(dateKey(date)) ?? []).length,
       };
     });
-  }, [eventsByDay, selectedDate, visibleMonth]);
+  }, [eventsByDay, selectedDate, today, visibleMonth]);
 
   const selectedDayEvents = useMemo(() => {
     return eventsByDay.get(dateKey(selectedDate)) ?? [];
@@ -240,7 +280,8 @@ export function CalendarWorkspace() {
   const scheduleTemplateColumns = `${viewMode === "day" ? 62 : 56}px repeat(${visibleScheduleDays.length}, minmax(${viewMode === "day" ? 180 : 112}px, 1fr))`;
 
   const scheduleEvents = useMemo(() => {
-    return demoEvents
+    return events
+      .filter((event) => !event.isAllDay)
       .map((event) => {
         const dayIndex = visibleScheduleDays.findIndex((day) =>
           sameDay(day, event.startsAt),
@@ -281,14 +322,23 @@ export function CalendarWorkspace() {
         ): event is CalendarEvent & { gridColumn: number; gridRow: string } =>
           event !== null,
       );
-  }, [visibleScheduleDays]);
+  }, [events, visibleScheduleDays]);
+
+  const allDayEventsByVisibleDay = useMemo(() => {
+    return visibleScheduleDays.map((day) =>
+      (eventsByDay.get(dateKey(day)) ?? []).filter((event) => event.isAllDay),
+    );
+  }, [eventsByDay, visibleScheduleDays]);
 
   const upcomingEvents = useMemo(() => {
-    return [...demoEvents]
-      .filter((event) => event.startsAt.getTime() >= selectedDate.getTime())
+    return [...events]
+      .filter(
+        (event) =>
+          event.startsAt.getTime() >= startOfDay(selectedDate).getTime(),
+      )
       .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())
-      .slice(0, 4);
-  }, [selectedDate]);
+      .slice(0, 6);
+  }, [events, selectedDate]);
 
   function moveView(direction: -1 | 1) {
     if (viewMode === "month") {
@@ -308,9 +358,9 @@ export function CalendarWorkspace() {
   }
 
   function jumpToToday() {
-    const today = new Date();
-    setVisibleMonth(startOfMonth(today));
-    setSelectedDate(today);
+    const nextToday = new Date();
+    setVisibleMonth(startOfMonth(nextToday));
+    setSelectedDate(nextToday);
   }
 
   function changeView(nextView: ViewMode) {
@@ -327,8 +377,9 @@ export function CalendarWorkspace() {
           <div className="calendar-title-copy">
             <h1>{formatViewTitle(viewMode, selectedDate, visibleMonth)}</h1>
             <p>
-              Day, week, and month views based on the macOS calendar layout in
-              docs.
+              {session?.account_email
+                ? `Primary Google Calendar for ${session.account_email}`
+                : "Primary Google Calendar"}
             </p>
           </div>
           <div
@@ -370,7 +421,12 @@ export function CalendarWorkspace() {
           </div>
         </div>
 
-        {viewMode === "month" ? (
+        {error ? <p className="status error inline-status">{error}</p> : null}
+        {loading ? (
+          <p className="list-empty">Loading Google Calendar...</p>
+        ) : null}
+
+        {!loading && viewMode === "month" ? (
           <>
             <div className="calendar-weekdays" aria-hidden>
               {weekdayLabels.map((day) => (
@@ -409,7 +465,9 @@ export function CalendarWorkspace() {
               ))}
             </div>
           </>
-        ) : (
+        ) : null}
+
+        {!loading && viewMode !== "month" ? (
           <div className={`calendar-board ${viewMode}-view`}>
             <div
               className={`schedule-head ${viewMode}-view`}
@@ -419,7 +477,7 @@ export function CalendarWorkspace() {
             >
               <div className="schedule-corner" />
               {visibleScheduleDays.map((day) => {
-                const isToday = sameDay(day, seedDate);
+                const isToday = sameDay(day, today);
                 const isSelected = sameDay(day, selectedDate);
                 return (
                   <button
@@ -450,11 +508,22 @@ export function CalendarWorkspace() {
               }}
             >
               <div className="schedule-allday-label">All day</div>
-              {visibleScheduleDays.map((day) => (
+              {allDayEventsByVisibleDay.map((items, index) => (
                 <div
-                  key={`allday-${dateKey(day)}`}
+                  key={`allday-${dateKey(visibleScheduleDays[index])}`}
                   className="schedule-allday-cell"
-                />
+                >
+                  <div className="schedule-allday-events">
+                    {items.slice(0, 3).map((event) => (
+                      <span
+                        key={event.id}
+                        className={`schedule-allday-pill tone-${event.tone}`}
+                      >
+                        {event.title}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
 
@@ -515,7 +584,7 @@ export function CalendarWorkspace() {
               </div>
             </div>
           </div>
-        )}
+        ) : null}
       </section>
 
       <aside className="calendar-agenda" aria-label="Selected day agenda">
@@ -531,7 +600,9 @@ export function CalendarWorkspace() {
 
         <div className="agenda-list">
           {selectedDayEvents.length === 0 ? (
-            <p className="agenda-empty">No events for this date.</p>
+            <p className="agenda-empty">
+              No Google Calendar events for this date.
+            </p>
           ) : (
             selectedDayEvents.map((event) => (
               <article
@@ -541,7 +612,11 @@ export function CalendarWorkspace() {
                 <h3>{event.title}</h3>
                 <p>
                   <Clock3 size={13} />
-                  {formatTimeRange(event.startsAt, event.endsAt)}
+                  {formatTimeRange(
+                    event.startsAt,
+                    event.endsAt,
+                    event.isAllDay,
+                  )}
                 </p>
                 <p>
                   <MapPin size={13} />
@@ -555,17 +630,24 @@ export function CalendarWorkspace() {
         <div className="agenda-upcoming">
           <h3>Upcoming</h3>
           <div>
-            {upcomingEvents.map((event) => (
-              <p key={`upcoming-${event.id}`}>
-                <strong>
-                  {event.startsAt.toLocaleDateString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </strong>
-                <span>{event.title}</span>
+            {upcomingEvents.length === 0 ? (
+              <p>
+                <strong>None</strong>
+                <span>No upcoming Google Calendar events in this range.</span>
               </p>
-            ))}
+            ) : (
+              upcomingEvents.map((event) => (
+                <p key={`upcoming-${event.id}`}>
+                  <strong>
+                    {event.startsAt.toLocaleDateString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </strong>
+                  <span>{event.title}</span>
+                </p>
+              ))
+            )}
           </div>
         </div>
       </aside>

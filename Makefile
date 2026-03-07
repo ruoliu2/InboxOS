@@ -1,7 +1,7 @@
 .PHONY: api-dev web-dev desktop-dev dev api-test api-lint api-format web-lint web-format web-build format install-hooks up down
 
 api-dev:
-	cd apps/api && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+	cd apps/api && uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 web-dev:
 	cd apps/web && bun run dev
@@ -16,10 +16,10 @@ api-test:
 	cd apps/api && uv run --group dev python -m pytest
 
 api-lint:
-	cd apps/api && uv run --group dev ruff check
+	cd apps/api && uv run --group dev python -m ruff check
 
 api-format:
-	cd apps/api && uv run --group dev black . && uv run --group dev ruff check --fix .
+	cd apps/api && uv run --group dev python -m ruff format . && uv run --group dev python -m ruff check --fix .
 
 web-lint:
 	cd apps/web && bun run lint

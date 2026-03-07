@@ -21,6 +21,12 @@ class ThreadSummary(BaseModel):
     action_states: list[ActionState]
 
 
+class ThreadSummaryPage(BaseModel):
+    threads: list[ThreadSummary] = Field(default_factory=list)
+    next_page_token: str | None = None
+    has_more: bool = False
+
+
 class ThreadAnalysis(BaseModel):
     summary: str
     action_items: list[str] = Field(default_factory=list)
