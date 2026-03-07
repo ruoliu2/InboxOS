@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     gmail_cache_db_path: str = str(
         Path.home() / ".cache" / "inboxos" / "gmail_mailbox_cache.sqlite3"
     )
+    tasks_database_url: str = (
+        f"sqlite:///{Path.home() / '.cache' / 'inboxos' / 'tasks.sqlite3'}"
+    )
 
     model_config = SettingsConfigDict(
         env_file=(REPO_ROOT / ".env", API_ROOT / ".env"),

@@ -23,10 +23,15 @@ import { api } from "@inboxos/lib/api";
 import { formatDate } from "@inboxos/lib/format";
 import {
   AuthSessionResponse,
+  ComposeMode,
+  MailboxKey,
+  ThreadActionName,
   ThreadDetail,
   ThreadMessage,
   ThreadSummary,
 } from "@inboxos/types";
+import { ConfirmDialog } from "@inboxos/ui/confirm-dialog";
+import { OverflowMenu } from "@inboxos/ui/overflow-menu";
 
 import { EmailHtmlPreview } from "./email-html-preview";
 
@@ -36,15 +41,26 @@ type MailWorkspaceProps = {
   initialThreadId?: string | null;
 };
 
+type ConfirmState = {
+  title: string;
+  body: string;
+  confirmLabel: string;
+  action: ThreadActionName;
+} | null;
+
 const PAGE_SIZE = 20;
 
-const primaryFolders = [
+const primaryFolders: Array<{
+  key: MailboxKey;
+  label: string;
+  icon: typeof Inbox;
+}> = [
   { key: "inbox", label: "Inbox", icon: Inbox },
   { key: "sent", label: "Sent", icon: Send },
   { key: "archive", label: "Archive", icon: Archive },
   { key: "trash", label: "Trash", icon: Trash2 },
   { key: "junk", label: "Junk", icon: ArchiveX },
-] as const;
+];
 
 function isUnread(thread: ThreadSummary): boolean {
   return thread.action_states.some((state) => state !== "fyi");
@@ -126,6 +142,12 @@ function labelsFromThread(thread: ThreadSummary): string[] {
   return ["gmail"];
 }
 
+function mailboxHeading(value: MailboxKey): string {
+  return (
+    primaryFolders.find((folder) => folder.key === value)?.label ?? "Inbox"
+  );
+}
+
 function toThreadSummary(thread: ThreadDetail): ThreadSummary {
   return {
     id: thread.id,
@@ -161,12 +183,21 @@ function mergeThreadSummaries(
   ];
 }
 
+function parseRecipients(value: string): string[] {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function hasHtmlPreview(message: ThreadMessage): boolean {
   return Boolean(message.body_html?.trim());
 }
 
 export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   const [session, setSession] = useState<AuthSessionResponse | null>(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
+  const [mailboxCount, setMailboxCount] = useState<number | null>(null);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(
     initialThreadId ?? null,
@@ -174,69 +205,94 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   const [selectedThread, setSelectedThread] = useState<ThreadDetail | null>(
     null,
   );
+  const [mailbox, setMailbox] = useState<MailboxKey>("inbox");
   const [listTab, setListTab] = useState<ListTab>("all");
-  const [search, setSearch] = useState("");
-  const [replyText, setReplyText] = useState("");
-  const [muteThread, setMuteThread] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [composeMode, setComposeMode] = useState<ComposeMode>("reply");
+  const [composeBody, setComposeBody] = useState("");
+  const [forwardTo, setForwardTo] = useState("");
+  const [forwardCc, setForwardCc] = useState("");
+  const [forwardBcc, setForwardBcc] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadingThread, setLoadingThread] = useState(false);
-  const [sendingReply, setSendingReply] = useState(false);
+  const [sendingCompose, setSendingCompose] = useState(false);
+  const [actionInFlight, setActionInFlight] = useState<ThreadActionName | null>(
+    null,
+  );
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
+  const [confirmState, setConfirmState] = useState<ConfirmState>(null);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const threadRequestIdRef = useRef(0);
   const listScrollerRef = useRef<HTMLDivElement | null>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const loadedSearchMode = search.trim().length > 0;
+  const unreadOnly = listTab === "unread";
+  const activeHeading = mailboxHeading(mailbox);
 
   const loadInitialThreads = useCallback(async () => {
+    if (!session?.authenticated) {
+      return;
+    }
+
     setLoadingList(true);
     setError(null);
+    setNotice(null);
 
     try {
-      const [nextSession, page] = await Promise.all([
-        api.getSession(),
-        api.getGmailThreads({ page_size: PAGE_SIZE }),
-      ]);
-      if (!nextSession.authenticated) {
-        window.location.href = "/auth";
-        return;
-      }
-
-      setSession(nextSession);
-      setThreads((current) => mergeThreadSummaries(page.threads, current));
+      const page = await api.getGmailThreads({
+        page_size: PAGE_SIZE,
+        q: searchQuery || undefined,
+        mailbox,
+        unread_only: unreadOnly,
+      });
+      setThreads(page.threads);
+      setMailboxCount(page.total_count);
       setNextPageToken(page.next_page_token);
       setHasMore(page.has_more);
-      setNotice(
-        page.threads.length === 0 ? "No Gmail inbox threads were found." : null,
-      );
+      if (page.threads.length === 0) {
+        setNotice(`No ${activeHeading.toLowerCase()} threads were found.`);
+      }
     } catch (loadError) {
       setError((loadError as Error).message);
+      setMailboxCount(null);
       setThreads([]);
       setNextPageToken(null);
       setHasMore(false);
     } finally {
       setLoadingList(false);
     }
-  }, []);
+  }, [activeHeading, mailbox, searchQuery, session?.authenticated, unreadOnly]);
 
   const loadMoreThreads = useCallback(async () => {
-    if (!nextPageToken || loadingList || loadingMore || loadedSearchMode) {
+    if (
+      !session?.authenticated ||
+      !nextPageToken ||
+      loadingList ||
+      loadingMore
+    ) {
       return;
     }
 
     setLoadingMore(true);
     setError(null);
+    setNotice(null);
 
     try {
       const page = await api.getGmailThreads({
         page_token: nextPageToken,
         page_size: PAGE_SIZE,
+        q: searchQuery || undefined,
+        mailbox,
+        unread_only: unreadOnly,
       });
       setThreads((current) => mergeThreadSummaries(current, page.threads));
+      setMailboxCount(page.total_count);
       setNextPageToken(page.next_page_token);
       setHasMore(page.has_more);
     } catch (loadError) {
@@ -244,11 +300,73 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     } finally {
       setLoadingMore(false);
     }
-  }, [loadedSearchMode, loadingList, loadingMore, nextPageToken]);
+  }, [
+    loadingList,
+    loadingMore,
+    mailbox,
+    nextPageToken,
+    searchQuery,
+    session?.authenticated,
+    unreadOnly,
+  ]);
 
   useEffect(() => {
+    let isMounted = true;
+
+    async function loadSession() {
+      try {
+        const nextSession = await api.getSession();
+        if (!isMounted) {
+          return;
+        }
+        if (!nextSession.authenticated) {
+          window.location.href = "/auth";
+          return;
+        }
+        setSession(nextSession);
+      } catch (sessionError) {
+        if (isMounted) {
+          setError((sessionError as Error).message);
+        }
+      } finally {
+        if (isMounted) {
+          setSessionChecked(true);
+        }
+      }
+    }
+
+    void loadSession();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setSearchQuery(searchInput.trim());
+    }, 250);
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, [searchInput]);
+
+  useEffect(() => {
+    if (!sessionChecked || !session?.authenticated) {
+      return;
+    }
+    setSelectedThreadId(null);
+    setSelectedThread(null);
+    setShowMoreMenu(false);
     void loadInitialThreads();
-  }, [loadInitialThreads]);
+  }, [loadInitialThreads, session?.authenticated, sessionChecked]);
+
+  useEffect(() => {
+    setComposeMode("reply");
+    setComposeBody("");
+    setForwardTo("");
+    setForwardCc("");
+    setForwardBcc("");
+  }, [selectedThreadId]);
 
   useEffect(() => {
     if (!selectedThreadId) {
@@ -296,13 +414,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   }, [selectedThreadId]);
 
   useEffect(() => {
-    if (
-      loadingList ||
-      loadingMore ||
-      loadedSearchMode ||
-      !hasMore ||
-      !loadMoreTriggerRef.current
-    ) {
+    if (loadingList || loadingMore || !hasMore || !loadMoreTriggerRef.current) {
       return;
     }
 
@@ -322,55 +434,129 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     return () => {
       observer.disconnect();
     };
-  }, [hasMore, loadedSearchMode, loadMoreThreads, loadingList, loadingMore]);
+  }, [hasMore, loadMoreThreads, loadingList, loadingMore]);
 
   const activeThread =
     selectedThread && selectedThread.id === selectedThreadId
       ? selectedThread
       : null;
 
-  const visibleThreads = useMemo(() => {
-    const query = search.trim().toLowerCase();
+  const accountLabel =
+    session?.account_name ?? session?.account_email ?? "Google account";
 
-    return threads.filter((thread) => {
-      if (listTab === "unread" && !isUnread(thread)) {
-        return false;
-      }
-
-      if (!query) {
-        return true;
-      }
-
-      const haystack = [
-        thread.subject,
-        thread.snippet,
-        thread.participants.join(" "),
-      ]
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(query);
+  function focusComposer(mode: ComposeMode) {
+    setComposeMode(mode);
+    setNotice(null);
+    setError(null);
+    window.requestAnimationFrame(() => {
+      composerRef.current?.focus();
     });
-  }, [listTab, search, threads]);
+  }
 
-  async function sendReply() {
+  const runThreadAction = useCallback(
+    async (action: ThreadActionName) => {
+      if (!selectedThreadId) {
+        return;
+      }
+
+      setActionInFlight(action);
+      setNotice(null);
+      setError(null);
+
+      try {
+        const result = await api.actOnGmailThread(selectedThreadId, action);
+        const shouldClearSelection =
+          action === "delete" ||
+          action === "restore" ||
+          action === "trash" ||
+          (action === "archive" && mailbox === "inbox") ||
+          (action === "junk" && mailbox !== "junk");
+
+        const updatedThread = result.thread;
+        if (updatedThread) {
+          setSelectedThread(updatedThread);
+          setThreads((current) =>
+            mergeThreadSummaries(
+              current,
+              [toThreadSummary(updatedThread)],
+              "prepend",
+            ),
+          );
+        }
+
+        if (shouldClearSelection || result.deleted) {
+          setSelectedThreadId(null);
+          setSelectedThread(null);
+        }
+
+        await loadInitialThreads();
+        setNotice(
+          {
+            archive: "Thread archived.",
+            junk: "Thread moved to junk.",
+            trash: "Thread moved to trash.",
+            delete: "Thread deleted permanently.",
+            restore: "Thread restored to inbox.",
+          }[action],
+        );
+      } catch (actionError) {
+        setError((actionError as Error).message);
+      } finally {
+        setActionInFlight(null);
+        setConfirmState(null);
+      }
+    },
+    [loadInitialThreads, mailbox, selectedThreadId],
+  );
+
+  const moreMenuItems = useMemo(() => {
+    const items: Array<{
+      label: string;
+      onSelect: () => void;
+      danger?: boolean;
+      disabled?: boolean;
+    }> = [];
+
+    if (mailbox === "trash" || mailbox === "junk") {
+      items.push({
+        label: "Restore to inbox",
+        onSelect: () => {
+          void runThreadAction("restore");
+        },
+      });
+    }
+    if (mailbox === "trash") {
+      items.push({
+        label: "Delete permanently",
+        onSelect: () =>
+          setConfirmState({
+            title: "Delete this thread permanently?",
+            body: "This removes the Gmail thread permanently and cannot be undone.",
+            confirmLabel: "Delete forever",
+            action: "delete",
+          }),
+        danger: true,
+      });
+    }
+    return items;
+  }, [mailbox, runThreadAction]);
+
+  async function sendCompose() {
     if (!selectedThreadId || !activeThread) {
       return;
     }
 
-    const body = replyText.trim();
-    if (!body) {
-      setError("Reply cannot be empty.");
-      return;
-    }
-
-    setError(null);
+    setSendingCompose(true);
     setNotice(null);
-    setSendingReply(true);
+    setError(null);
 
     try {
-      const result = await api.replyToGmailThread(selectedThreadId, {
-        body,
-        mute_thread: muteThread,
+      const result = await api.composeGmailThread(selectedThreadId, {
+        mode: composeMode,
+        body: composeBody,
+        to: parseRecipients(forwardTo),
+        cc: parseRecipients(forwardCc),
+        bcc: parseRecipients(forwardBcc),
       });
       setSelectedThread(result.thread);
       setThreads((current) =>
@@ -380,17 +566,22 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
           "prepend",
         ),
       );
-      setReplyText("");
-      setMuteThread(false);
+      setComposeBody("");
+      setForwardTo("");
+      setForwardCc("");
+      setForwardBcc("");
+      setComposeMode("reply");
       setNotice(
-        result.muted
-          ? "Reply sent through Gmail. Mute is not applied to Gmail labels."
-          : "Reply sent through Gmail.",
+        {
+          reply: "Reply sent through Gmail.",
+          reply_all: "Reply all sent through Gmail.",
+          forward: "Forward sent through Gmail.",
+        }[result.mode],
       );
-    } catch (sendError) {
-      setError((sendError as Error).message);
+    } catch (composeError) {
+      setError((composeError as Error).message);
     } finally {
-      setSendingReply(false);
+      setSendingCompose(false);
     }
   }
 
@@ -402,284 +593,390 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     }
   }
 
-  const accountLabel =
-    session?.account_name ?? session?.account_email ?? "Google account";
-
   return (
-    <main className="mail-shell panel-surface">
-      <aside className="mail-left-nav">
-        <div className="mail-account-select">
-          <span className="account-logo" aria-hidden>
-            <Triangle size={11} />
-          </span>
-          <span className="account-name">{accountLabel}</span>
-          <span className="account-caret" aria-hidden>
-            <ChevronDown size={14} />
-          </span>
-        </div>
-
-        <div className="mail-folder-group">
-          {primaryFolders.map((folder) => {
-            const count = folder.key === "inbox" ? threads.length : 0;
-            return (
-              <button
-                key={folder.key}
-                className={`folder-row ${folder.key === "inbox" ? "active" : ""}`.trim()}
-                type="button"
-                disabled={folder.key !== "inbox"}
-              >
-                <span className="folder-label">
-                  <folder.icon size={15} />
-                  {folder.label}
-                </span>
-                <span className="folder-count">{count || ""}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="mail-folder-group">
-          <p className="folder-note">
-            Gmail inbox is live. Other folders are left as shell navigation for
-            now.
-          </p>
-          <button
-            className="folder-row signout-row"
-            onClick={signOut}
-            type="button"
-          >
-            <span className="folder-label">
-              <LogOut size={15} />
-              Sign Out
+    <>
+      <main className="mail-shell panel-surface">
+        <aside className="mail-left-nav">
+          <div className="mail-account-select">
+            <span className="account-logo" aria-hidden>
+              <Triangle size={11} />
             </span>
-          </button>
-        </div>
-      </aside>
-
-      <section className="mail-center-list">
-        <div className="list-topbar">
-          <h1>Inbox</h1>
-          <div className="list-tabs">
-            <button
-              className={listTab === "all" ? "active" : ""}
-              onClick={() => setListTab("all")}
-              type="button"
-            >
-              All mail
-            </button>
-            <button
-              className={listTab === "unread" ? "active" : ""}
-              onClick={() => setListTab("unread")}
-              type="button"
-            >
-              Unread
-            </button>
+            <span className="account-name">{accountLabel}</span>
+            <span className="account-caret" aria-hidden>
+              <ChevronDown size={14} />
+            </span>
           </div>
-        </div>
 
-        <div className="mail-search-wrap">
-          <div className="search-field">
-            <Search size={16} />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search loaded threads"
-              aria-label="Search mails"
-            />
-          </div>
-        </div>
-
-        {notice ? <p className="status inline-status">{notice}</p> : null}
-        {loadedSearchMode ? (
-          <p className="status inline-status">Searching loaded threads only.</p>
-        ) : null}
-        {error ? <p className="status error inline-status">{error}</p> : null}
-        {loadingList ? (
-          <p className="list-empty">Loading Gmail inbox...</p>
-        ) : null}
-
-        {!loadingList ? (
-          <div className="mail-card-list" ref={listScrollerRef}>
-            {visibleThreads.length === 0 && !error ? (
-              <p className="list-empty">
-                {loadedSearchMode
-                  ? "No matches in the loaded Gmail threads."
-                  : "No messages in this Gmail inbox."}
-              </p>
-            ) : null}
-            {visibleThreads.map((thread) => {
-              const name = displayNameFromThread(
-                thread,
-                session?.account_email,
-              );
-              const labels = labelsFromThread(thread);
+          <div className="mail-folder-group">
+            {primaryFolders.map((folder) => {
+              const count = folder.key === mailbox ? mailboxCount : 0;
               return (
                 <button
-                  key={thread.id}
-                  className={`mail-card ${thread.id === selectedThreadId ? "active" : ""}`.trim()}
-                  onClick={() => {
-                    if (thread.id === selectedThreadId) {
-                      return;
-                    }
-                    setSelectedThread(null);
-                    setLoadingThread(true);
-                    setError(null);
-                    setSelectedThreadId(thread.id);
-                  }}
+                  key={folder.key}
+                  className={`folder-row ${folder.key === mailbox ? "active" : ""}`.trim()}
+                  onClick={() => setMailbox(folder.key)}
                   type="button"
                 >
-                  <div className="mail-card-row">
-                    <strong>{name}</strong>
-                    <span>{relativeTime(thread.last_message_at)}</span>
-                  </div>
-                  <p className="mail-card-subject">{thread.subject}</p>
-                  <p className="mail-card-snippet">{thread.snippet}</p>
-                  <div className="mail-card-labels">
-                    {labels.map((label) => (
-                      <span
-                        key={`${thread.id}-${label}`}
-                        className="label-pill"
-                      >
-                        {label}
-                      </span>
-                    ))}
-                  </div>
+                  <span className="folder-label">
+                    <folder.icon size={15} />
+                    {folder.label}
+                  </span>
+                  <span className="folder-count">{count ?? ""}</span>
                 </button>
               );
             })}
-
-            {!loadedSearchMode && hasMore ? (
-              <div className="mail-list-footer">
-                {loadingMore ? <span>Loading older mail...</span> : null}
-                <div
-                  ref={loadMoreTriggerRef}
-                  className="mail-list-sentinel"
-                  aria-hidden
-                />
-              </div>
-            ) : null}
           </div>
-        ) : null}
-      </section>
 
-      <section className="mail-read-pane">
-        <div className="read-toolbar">
-          <button type="button" aria-label="Archive">
-            <Archive size={15} />
-          </button>
-          <button type="button" aria-label="Move to junk">
-            <ArchiveX size={15} />
-          </button>
-          <button type="button" aria-label="Move to trash">
-            <Trash2 size={15} />
-          </button>
-          <button type="button" aria-label="Snooze">
-            <Clock size={15} />
-          </button>
-          <div className="spacer" />
-          <div className="toolbar-sep" />
-          <button type="button" aria-label="Reply">
-            <Reply size={15} />
-          </button>
-          <button type="button" aria-label="Reply all">
-            <ReplyAll size={15} />
-          </button>
-          <button type="button" aria-label="Forward">
-            <Forward size={15} />
-          </button>
-          <div className="toolbar-sep" />
-          <button type="button" aria-label="More">
-            <MoreVertical size={15} />
-          </button>
-        </div>
-
-        {selectedThreadId && loadingThread ? (
-          <p className="read-empty">Loading message...</p>
-        ) : null}
-        {selectedThreadId && !loadingThread && !activeThread && error ? (
-          <div className="read-empty empty-thread-state">
-            <Mailbox size={18} />
-            <span>{error}</span>
+          <div className="mail-folder-group">
+            <p className="folder-note">
+              Gmail folders and search now reflect live mailbox state.
+            </p>
+            <button
+              className="folder-row signout-row"
+              onClick={signOut}
+              type="button"
+            >
+              <span className="folder-label">
+                <LogOut size={15} />
+                Sign Out
+              </span>
+            </button>
           </div>
-        ) : null}
+        </aside>
 
-        {activeThread ? (
-          <>
-            <div className="read-header">
-              <div className="avatar-circle">
-                {initials(
-                  displayNameFromThread(activeThread, session?.account_email),
-                )}
-              </div>
-              <div>
-                <strong>
-                  {displayNameFromThread(activeThread, session?.account_email)}
-                </strong>
-                <p>{activeThread.subject}</p>
-                <p>
-                  Reply-To:{" "}
-                  {counterpartyEmailFromThread(
-                    activeThread,
-                    session?.account_email,
-                  )}
-                </p>
-              </div>
-              <time>{formatDate(activeThread.last_message_at)}</time>
+        <section className="mail-center-list">
+          <div className="list-topbar">
+            <h1>{activeHeading}</h1>
+            <div className="list-tabs">
+              <button
+                className={listTab === "all" ? "active" : ""}
+                onClick={() => setListTab("all")}
+                type="button"
+              >
+                All mail
+              </button>
+              <button
+                className={listTab === "unread" ? "active" : ""}
+                onClick={() => setListTab("unread")}
+                type="button"
+              >
+                Unread
+              </button>
             </div>
+          </div>
 
-            <div className="read-body message-stack">
-              {activeThread.messages.map((message) => (
-                <article key={message.id} className="message-card">
-                  <header className="message-card-header">
-                    <strong>{message.sender}</strong>
-                    <time>{formatDate(message.sent_at)}</time>
-                  </header>
-                  {hasHtmlPreview(message) ? (
-                    <EmailHtmlPreview message={message} />
-                  ) : (
-                    <div className="message-plain-body">
-                      {message.body || "No preview available."}
-                    </div>
-                  )}
-                </article>
-              ))}
-            </div>
-
-            <div className="reply-panel">
-              <textarea
-                value={replyText}
-                onChange={(event) => setReplyText(event.target.value)}
-                placeholder={`Reply ${displayNameFromThread(activeThread, session?.account_email)}...`}
+          <div className="mail-search-wrap">
+            <div className="search-field">
+              <Search size={16} />
+              <input
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="Search Gmail"
+                aria-label="Search Gmail"
               />
-              <div className="reply-actions">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={muteThread}
-                    onChange={(event) => setMuteThread(event.target.checked)}
-                  />
-                  Keep InboxOS muted after send
-                </label>
-                <button
-                  className="send-button"
-                  onClick={sendReply}
-                  type="button"
-                  disabled={sendingReply}
-                >
-                  {sendingReply ? "Sending..." : "Send"}
-                </button>
-              </div>
             </div>
-          </>
-        ) : null}
-
-        {!activeThread && !selectedThreadId && !loadingThread && !error ? (
-          <div className="read-empty empty-thread-state">
-            <Mailbox size={18} />
-            <span>Select a Gmail thread to read it here.</span>
           </div>
-        ) : null}
-      </section>
-    </main>
+
+          {notice ? <p className="status inline-status">{notice}</p> : null}
+          {error ? <p className="status error inline-status">{error}</p> : null}
+          {loadingList ? (
+            <p className="list-empty">Loading Gmail threads...</p>
+          ) : null}
+
+          {!loadingList ? (
+            <div className="mail-card-list" ref={listScrollerRef}>
+              {threads.length === 0 && !error ? (
+                <p className="list-empty">No messages in this Gmail view.</p>
+              ) : null}
+              {threads.map((thread) => {
+                const name = displayNameFromThread(
+                  thread,
+                  session?.account_email,
+                );
+                const labels = labelsFromThread(thread);
+                return (
+                  <button
+                    key={thread.id}
+                    className={`mail-card ${thread.id === selectedThreadId ? "active" : ""}`.trim()}
+                    onClick={() => {
+                      if (thread.id === selectedThreadId) {
+                        return;
+                      }
+                      setSelectedThread(null);
+                      setLoadingThread(true);
+                      setError(null);
+                      setSelectedThreadId(thread.id);
+                    }}
+                    type="button"
+                  >
+                    <div className="mail-card-row">
+                      <strong>{name}</strong>
+                      <span>{relativeTime(thread.last_message_at)}</span>
+                    </div>
+                    <p className="mail-card-subject">{thread.subject}</p>
+                    <p className="mail-card-snippet">{thread.snippet}</p>
+                    <div className="mail-card-labels">
+                      {labels.map((label) => (
+                        <span
+                          key={`${thread.id}-${label}`}
+                          className="label-pill"
+                        >
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  </button>
+                );
+              })}
+
+              {hasMore ? (
+                <div className="mail-list-footer">
+                  {loadingMore ? <span>Loading older mail...</span> : null}
+                  <div
+                    ref={loadMoreTriggerRef}
+                    className="mail-list-sentinel"
+                    aria-hidden
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+
+        <section className="mail-read-pane">
+          <div className="read-toolbar">
+            <button
+              type="button"
+              aria-label="Archive"
+              onClick={() => void runThreadAction("archive")}
+              disabled={
+                !activeThread ||
+                mailbox === "archive" ||
+                actionInFlight !== null
+              }
+            >
+              <Archive size={15} />
+            </button>
+            <button
+              type="button"
+              aria-label="Move to junk"
+              onClick={() => void runThreadAction("junk")}
+              disabled={
+                !activeThread || mailbox === "junk" || actionInFlight !== null
+              }
+            >
+              <ArchiveX size={15} />
+            </button>
+            <button
+              type="button"
+              aria-label="Move to trash"
+              onClick={() =>
+                setConfirmState({
+                  title: "Move this thread to trash?",
+                  body: "The Gmail thread will move to trash and can be restored from the trash view.",
+                  confirmLabel: "Move to trash",
+                  action: "trash",
+                })
+              }
+              disabled={!activeThread || actionInFlight !== null}
+            >
+              <Trash2 size={15} />
+            </button>
+            <button
+              type="button"
+              aria-label="Snooze unavailable"
+              className="disabled-toolbar-button"
+              onClick={() =>
+                setNotice(
+                  "Snooze is not exposed by the Gmail thread API. This control is intentionally disabled.",
+                )
+              }
+              disabled={!activeThread}
+            >
+              <Clock size={15} />
+            </button>
+            <div className="spacer" />
+            <div className="toolbar-sep" />
+            <button
+              type="button"
+              aria-label="Reply"
+              onClick={() => focusComposer("reply")}
+              disabled={!activeThread}
+            >
+              <Reply size={15} />
+            </button>
+            <button
+              type="button"
+              aria-label="Reply all"
+              onClick={() => focusComposer("reply_all")}
+              disabled={!activeThread}
+            >
+              <ReplyAll size={15} />
+            </button>
+            <button
+              type="button"
+              aria-label="Forward"
+              onClick={() => focusComposer("forward")}
+              disabled={!activeThread}
+            >
+              <Forward size={15} />
+            </button>
+            <div className="toolbar-sep" />
+            <div className="toolbar-menu-wrap">
+              <button
+                type="button"
+                aria-label="More"
+                onClick={() => setShowMoreMenu((current) => !current)}
+                disabled={!activeThread || moreMenuItems.length === 0}
+              >
+                <MoreVertical size={15} />
+              </button>
+              <OverflowMenu
+                open={showMoreMenu && moreMenuItems.length > 0}
+                items={moreMenuItems}
+                onClose={() => setShowMoreMenu(false)}
+              />
+            </div>
+          </div>
+
+          {selectedThreadId && loadingThread ? (
+            <p className="read-empty">Loading message...</p>
+          ) : null}
+          {selectedThreadId && !loadingThread && !activeThread && error ? (
+            <div className="read-empty empty-thread-state">
+              <Mailbox size={18} />
+              <span>{error}</span>
+            </div>
+          ) : null}
+
+          {activeThread ? (
+            <>
+              <div className="read-header">
+                <div className="avatar-circle">
+                  {initials(
+                    displayNameFromThread(activeThread, session?.account_email),
+                  )}
+                </div>
+                <div>
+                  <strong>
+                    {displayNameFromThread(
+                      activeThread,
+                      session?.account_email,
+                    )}
+                  </strong>
+                  <p>{activeThread.subject}</p>
+                  <p>
+                    Reply-To:{" "}
+                    {counterpartyEmailFromThread(
+                      activeThread,
+                      session?.account_email,
+                    )}
+                  </p>
+                </div>
+                <time>{formatDate(activeThread.last_message_at)}</time>
+              </div>
+
+              <div className="read-body message-stack">
+                {activeThread.messages.map((message) => (
+                  <article key={message.id} className="message-card">
+                    <header className="message-card-header">
+                      <strong>{message.sender}</strong>
+                      <time>{formatDate(message.sent_at)}</time>
+                    </header>
+                    {hasHtmlPreview(message) ? (
+                      <EmailHtmlPreview message={message} />
+                    ) : (
+                      <div className="message-plain-body">
+                        {message.body || "No preview available."}
+                      </div>
+                    )}
+                  </article>
+                ))}
+              </div>
+
+              <div className="reply-panel">
+                <div className="compose-mode-row">
+                  <strong>
+                    {composeMode === "reply"
+                      ? "Reply"
+                      : composeMode === "reply_all"
+                        ? "Reply all"
+                        : "Forward"}
+                  </strong>
+                </div>
+                {composeMode === "forward" ? (
+                  <div className="compose-recipient-grid">
+                    <input
+                      value={forwardTo}
+                      onChange={(event) => setForwardTo(event.target.value)}
+                      placeholder="To"
+                      aria-label="Forward recipients"
+                    />
+                    <input
+                      value={forwardCc}
+                      onChange={(event) => setForwardCc(event.target.value)}
+                      placeholder="Cc"
+                      aria-label="Forward cc recipients"
+                    />
+                    <input
+                      value={forwardBcc}
+                      onChange={(event) => setForwardBcc(event.target.value)}
+                      placeholder="Bcc"
+                      aria-label="Forward bcc recipients"
+                    />
+                  </div>
+                ) : null}
+                <textarea
+                  ref={composerRef}
+                  value={composeBody}
+                  onChange={(event) => setComposeBody(event.target.value)}
+                  placeholder={
+                    composeMode === "forward"
+                      ? "Add a note before forwarding..."
+                      : `Reply ${displayNameFromThread(activeThread, session?.account_email)}...`
+                  }
+                />
+                <div className="reply-actions">
+                  <span className="muted">
+                    {composeMode === "forward"
+                      ? "Forwarding sends a new Gmail message with the latest message quoted."
+                      : "Replies stay in the current Gmail thread."}
+                  </span>
+                  <button
+                    className="send-button"
+                    onClick={() => void sendCompose()}
+                    type="button"
+                    disabled={sendingCompose}
+                  >
+                    {sendingCompose ? "Sending..." : "Send"}
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : null}
+
+          {!activeThread && !selectedThreadId && !loadingThread && !error ? (
+            <div className="read-empty empty-thread-state">
+              <Mailbox size={18} />
+              <span>Select a Gmail thread to read it here.</span>
+            </div>
+          ) : null}
+        </section>
+      </main>
+
+      <ConfirmDialog
+        open={confirmState !== null}
+        title={confirmState?.title ?? ""}
+        body={confirmState?.body ?? ""}
+        confirmLabel={confirmState?.confirmLabel ?? "Confirm"}
+        busy={actionInFlight !== null}
+        onClose={() => setConfirmState(null)}
+        onConfirm={() => {
+          if (confirmState) {
+            void runThreadAction(confirmState.action);
+          }
+        }}
+      />
+    </>
   );
 }
