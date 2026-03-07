@@ -195,8 +195,9 @@ def get_gmail_mailbox_counts(
     session: AuthSessionRecord = Depends(get_current_auth_session),
     client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
 ) -> MailboxCountsResponse:
+    _, access_token = require_active_google_account(session)
     try:
-        return client.get_gmail_mailbox_counts(session.access_token)
+        return client.get_gmail_mailbox_counts(access_token)
     except GoogleAPIError as exc:
         raise HTTPException(status_code=exc.app_status_code, detail=str(exc)) from exc
     except RuntimeError as exc:
