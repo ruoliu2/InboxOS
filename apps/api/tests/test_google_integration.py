@@ -12,6 +12,7 @@ from app.schemas.common import ActionState
 from app.schemas.thread import (
     ComposeMode,
     ComposeThreadRequest,
+    MailboxCountsResponse,
     ThreadDetail,
     ThreadInlineAsset,
     ThreadMessage,
