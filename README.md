@@ -1,12 +1,12 @@
 # InboxOS MVP
 
-InboxOS is a mail-first AI workspace with one shared UI direction across the live web app and a planned macOS desktop shell.
+InboxOS is a mail-first AI workspace with one shared UI direction across the live web app and a planned macOS desktop shell. The current live mail provider is Gmail, and the mail integration layer is intended to support additional providers later without changing the shared product surface.
 
 ## Monorepo Layout
 
 - `apps/web`: Next.js host app for the current product surface
 - `apps/desktop`: planned macOS desktop shell around the shared app packages
-- `apps/api`: FastAPI backend for Google auth, Gmail, Calendar, legacy sync, and tasks
+- `apps/api`: FastAPI backend for Google auth, Gmail-first mail integration, Calendar, legacy sync, and tasks
 - `packages/app`: shared app shell and route-level page composition
 - `packages/features`: mail, tasks, calendar, and auth feature workspaces
 - `packages/ui`: shared UI chrome such as the left app rail
@@ -25,11 +25,13 @@ A2["Desktop user"] --> C1["Apps desktop"]
 B1 --> D1["Shared app packages"]
 C1 --> D1
 D1 --> E1["Apps api"]
-E1 --> F1["Google workspace client"]
-E1 --> G1["Gmail mailbox cache"]
-E1 --> H1["Action engine"]
-H1 --> I1["Task service"]
-E1 --> J1["Reply workflow"]
+E1 --> F1["Mail integration layer"]
+F1 --> G1["Gmail provider"]
+G1 --> H1["Gmail mailbox cache"]
+E1 --> I1["Google auth and calendar"]
+E1 --> J1["Action engine"]
+J1 --> K1["Task service"]
+E1 --> L1["Reply workflow"]
 ```
 
 ## Core Flows
@@ -78,6 +80,8 @@ Open [http://localhost:3000/mail](http://localhost:3000/mail).
 
 ## Mail Workspace Behavior
 
+- current live mail provider: Gmail
+- future direction: additional providers through the same mail integration layer
 - first mailbox paint loads the newest 20 Gmail inbox thread summaries
 - full Gmail thread detail loads only when a thread is opened or deep-linked
 - scrolling near the bottom loads older inbox pages
@@ -148,7 +152,8 @@ Implemented:
 
 - mail-first shared UI structure for web and future desktop shell reuse
 - Google OAuth start, callback, session, and logout flow with an HTTP-only session cookie
-- Gmail inbox list backed by live Google data with summary-first loading and a persisted first-page cache
+- Gmail is the first live provider in the mail integration layer, with room for additional providers later
+- Gmail inbox list is backed by live Google data with summary-first loading and a persisted first-page cache
 - full Gmail thread fetch on open plus direct Gmail reply from the mail workspace
 - infinite scroll for older inbox pages
 - Google Calendar event loading in the calendar workspace

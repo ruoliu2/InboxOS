@@ -14,13 +14,15 @@ C1 --> E1["Packages lib api client"]
 C1 --> F1["Packages types"]
 E1 --> G1["Apps api routers"]
 G1 --> H1["Auth service"]
-G1 --> I1["Google workspace client"]
-G1 --> J1["Gmail mailbox cache"]
-G1 --> K1["Thread service"]
-G1 --> L1["Task service"]
-G1 --> M1["Sync service"]
-K1 --> N1["Analysis adapter"]
-M1 --> O1["Mail adapter"]
+G1 --> I1["Mail integration layer"]
+I1 --> J1["Gmail provider"]
+J1 --> K1["Gmail mailbox cache"]
+G1 --> L1["Calendar integration"]
+G1 --> M1["Thread service"]
+G1 --> N1["Task service"]
+G1 --> O1["Sync service"]
+M1 --> P1["Analysis adapter"]
+O1 --> Q1["Mail adapter"]
 ```
 
 ## Shared Frontend Components
@@ -54,7 +56,7 @@ Primary file: `packages/features/src/mail/mail-workspace.tsx`
 
 Responsibilities:
 
-- load paginated Gmail thread summaries first
+- load paginated thread summaries from the current Gmail provider first
 - fetch full thread detail only when a thread is opened or deep-linked
 - append older inbox pages with infinite scroll
 - render the three-pane mail UI
@@ -110,7 +112,7 @@ Primary files:
 
 Responsibilities:
 
-- centralize auth, Gmail, calendar, task, and legacy thread API requests
+- centralize auth, Gmail, calendar, task, and legacy thread API requests while keeping room for future mail providers
 - keep demo fallback data in one place for the remaining in-memory flows
 - share stable TypeScript models across screens
 - expose environment-driven client configuration
@@ -128,12 +130,26 @@ Responsibilities:
 - create, refresh, load, and clear authenticated sessions
 - normalize safe redirect targets back into the web app
 
-### Google workspace client
+### Mail integration layer
+
+Primary files:
+
+- `apps/api/app/routers/gmail.py`
+- `apps/api/app/integrations/google_workspace.py`
+
+Responsibilities:
+
+- expose the live mail surface for the first shipped provider
+- keep the backend mail path extensible for additional providers later
+- coordinate summary-first inbox loading, thread detail fetches, and replies
+
+### GoogleWorkspaceClient
 
 Primary file: `apps/api/app/integrations/google_workspace.py`
 
 Responsibilities:
 
+- serve as the current Gmail provider implementation behind the mail integration layer
 - fetch paginated Gmail inbox summaries
 - fetch full Gmail thread detail and send Gmail replies
 - fetch Google Calendar events
@@ -145,7 +161,7 @@ Primary file: `apps/api/app/storage/mailbox_cache.py`
 
 Responsibilities:
 
-- persist Gmail summary pages by account, query, and page token
+- persist summary pages for the current Gmail provider by account, query, and page token
 - persist opened Gmail thread detail by account and thread id
 - serve cached first-page inbox summaries before a background refresh
 

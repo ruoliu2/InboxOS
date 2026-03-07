@@ -37,6 +37,8 @@ These endpoints match the current frontend implementation.
 
 Notes:
 
+- these `/gmail/*` routes are the current provider-specific surface for the first shipped mail integration
+- broader mail provider support may add additional adapters or endpoints later
 - the Gmail list endpoint returns inbox summaries first and defers full thread bodies to `GET /gmail/threads/{thread_id}`
 - the first page without `q` may be served from the persisted mailbox cache and refreshed in the background
 - the current web UI still searches only the already loaded summaries in memory, even though the backend accepts `q`
