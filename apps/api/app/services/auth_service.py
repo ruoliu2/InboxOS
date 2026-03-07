@@ -130,11 +130,12 @@ class AuthService:
         response: Response,
         session: AuthSessionRecord,
     ) -> None:
+        same_site = "none" if self.settings.session_cookie_secure else "lax"
         response.set_cookie(
             key=self.settings.session_cookie_name,
             value=session.session_id,
             httponly=True,
-            samesite="lax",
+            samesite=same_site,
             secure=self.settings.session_cookie_secure,
             path="/",
             max_age=self.settings.session_ttl_seconds,
@@ -142,12 +143,13 @@ class AuthService:
         )
 
     def clear_session_cookie(self, response: Response) -> None:
+        same_site = "none" if self.settings.session_cookie_secure else "lax"
         response.delete_cookie(
             key=self.settings.session_cookie_name,
             path="/",
             secure=self.settings.session_cookie_secure,
             httponly=True,
-            samesite="lax",
+            samesite=same_site,
         )
 
     def error_redirect(self, message: str) -> str:

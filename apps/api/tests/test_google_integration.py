@@ -82,6 +82,7 @@ def mock_google_login(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def restart_auth_dependencies() -> None:
+    get_settings.cache_clear()
     get_auth_service.cache_clear()
     get_auth_store.cache_clear()
 
@@ -110,6 +111,24 @@ def test_google_callback_sets_persistent_session_cookie_and_redirects(
     session_id = client.cookies.get(get_settings().session_cookie_name)
     assert session_id is not None
     assert get_auth_store().get_session(session_id) is not None
+
+
+def test_google_callback_uses_none_samesite_for_secure_cookie(client, monkeypatch):
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "true")
+    restart_auth_dependencies()
+    mock_google_login(monkeypatch)
+
+    start_response = client.get("/auth/google/start?redirect_to=/mail")
+    state = start_response.json()["state"]
+
+    callback_response = client.get(
+        f"/auth/google/callback?code=test-code&state={state}",
+        follow_redirects=False,
+    )
+
+    cookie_header = callback_response.headers["set-cookie"]
+    assert "SameSite=none" in cookie_header
+    assert "Secure" in cookie_header
 
 
 def test_auth_session_survives_service_restart(client, monkeypatch):
