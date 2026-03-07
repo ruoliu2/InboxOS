@@ -6,7 +6,7 @@ InboxOS is a mail-first AI workspace with one shared UI direction across the liv
 
 - `apps/web`: Next.js host app for the current product surface
 - `apps/desktop`: planned macOS desktop shell around the shared app packages
-- `apps/api`: FastAPI backend for auth, sync, threads, and tasks
+- `apps/api`: FastAPI backend for Google auth, Gmail, Calendar, legacy sync, and tasks
 - `packages/app`: shared app shell and route-level page composition
 - `packages/features`: mail, tasks, calendar, and auth feature workspaces
 - `packages/ui`: shared UI chrome such as the left app rail
@@ -25,22 +25,22 @@ A2["Desktop user"] --> C1["Apps desktop"]
 B1 --> D1["Shared app packages"]
 C1 --> D1
 D1 --> E1["Apps api"]
-E1 --> F1["Mail adapter"]
-E1 --> G1["Action engine"]
-G1 --> H1["Task service"]
-E1 --> I1["Reply workflow"]
+E1 --> F1["Google workspace client"]
+E1 --> G1["Gmail mailbox cache"]
+E1 --> H1["Action engine"]
+H1 --> I1["Task service"]
+E1 --> J1["Reply workflow"]
 ```
 
 ## Core Flows
 
 ```mermaid
 graph TD
-A1["Sync inbox"] --> B1["Analyze each thread"]
-B1 --> C1["Assign action states"]
-B1 --> D1["Create task candidates"]
-C1 --> E1["Render mail first views"]
-E1 --> F1["User sends direct reply"]
-F1 --> G1["Thread updates in place"]
+A1["Connect Google account"] --> B1["Load Gmail thread summaries"]
+B1 --> C1["Open thread detail on demand"]
+B1 --> D1["Scroll for older inbox pages"]
+C1 --> E1["User sends direct reply"]
+E1 --> F1["Thread refreshes in place"]
 ```
 
 ## Local Development
@@ -57,7 +57,9 @@ F1 --> G1["Thread updates in place"]
 
 ```bash
 cp .env.example .env
-# Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env before using Google sign-in.
+# Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI in .env.
+# Enable Gmail API and Google Calendar API in the same Google Cloud project.
+# Optionally set GMAIL_CACHE_DB_PATH to move the persisted Gmail mailbox cache.
 
 cd apps/api
 uv sync --group dev
@@ -73,6 +75,14 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 bun run dev
 ```
 
 Open [http://localhost:3000/mail](http://localhost:3000/mail).
+
+## Mail Workspace Behavior
+
+- first mailbox paint loads the newest 20 Gmail inbox thread summaries
+- full Gmail thread detail loads only when a thread is opened or deep-linked
+- scrolling near the bottom loads older inbox pages
+- search currently filters only the summaries already loaded in the client
+- the backend persists Gmail summary pages and opened thread detail in a local cache by default at `~/.cache/inboxos/gmail_mailbox_cache.sqlite3`
 
 ### Desktop
 
@@ -130,14 +140,17 @@ docker compose up --build
 - deploy with `apps/api/Dockerfile` or native Python build
 - expose port `8000`
 - set env vars from `.env.example`
+- optionally set `GMAIL_CACHE_DB_PATH` if the deploy target provides persistent storage for the mailbox cache
 
 ## Current MVP Status
 
 Implemented:
 
 - mail-first shared UI structure for web and future desktop shell reuse
-- Gmail sync stub with deterministic sample threads
-- thread analysis summary and action-state assignment
-- task generation from deadlines
-- direct thread reply endpoint for the mail workspace
+- Google OAuth start, callback, session, and logout flow with an HTTP-only session cookie
+- Gmail inbox list backed by live Google data with summary-first loading and a persisted first-page cache
+- full Gmail thread fetch on open plus direct Gmail reply from the mail workspace
+- infinite scroll for older inbox pages
+- Google Calendar event loading in the calendar workspace
 - mail, tasks, calendar, and auth surfaces in the web host app
+- legacy in-memory `/threads` and `/sync` flows remain available for thread analysis and task demos

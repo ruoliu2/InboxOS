@@ -13,12 +13,14 @@ B1 --> D1["Packages ui"]
 C1 --> E1["Packages lib api client"]
 C1 --> F1["Packages types"]
 E1 --> G1["Apps api routers"]
-G1 --> H1["Thread service"]
-G1 --> I1["Task service"]
-G1 --> J1["Auth service"]
-G1 --> K1["Sync service"]
-K1 --> L1["Mail adapter"]
-H1 --> M1["Analysis adapter"]
+G1 --> H1["Auth service"]
+G1 --> I1["Google workspace client"]
+G1 --> J1["Gmail mailbox cache"]
+G1 --> K1["Thread service"]
+G1 --> L1["Task service"]
+G1 --> M1["Sync service"]
+K1 --> N1["Analysis adapter"]
+M1 --> O1["Mail adapter"]
 ```
 
 ## Shared Frontend Components
@@ -52,10 +54,12 @@ Primary file: `packages/features/src/mail/mail-workspace.tsx`
 
 Responsibilities:
 
-- load thread summaries and thread detail
+- load paginated Gmail thread summaries first
+- fetch full thread detail only when a thread is opened or deep-linked
+- append older inbox pages with infinite scroll
 - render the three-pane mail UI
-- send replies through the thread reply endpoint
-- reconcile API and demo fallback state
+- send replies through the Gmail thread reply endpoint
+- keep search scoped to the summaries already loaded in memory for the current session
 
 ### Tasks workspace
 
@@ -106,12 +110,44 @@ Primary files:
 
 Responsibilities:
 
-- centralize API requests
-- keep demo fallback data in one place
+- centralize auth, Gmail, calendar, task, and legacy thread API requests
+- keep demo fallback data in one place for the remaining in-memory flows
 - share stable TypeScript models across screens
 - expose environment-driven client configuration
 
 ## Backend Components
+
+### Auth service
+
+Primary file: `apps/api/app/services/auth_service.py`
+
+Responsibilities:
+
+- build the Google OAuth start URL
+- exchange the OAuth callback for Google tokens and user profile data
+- create, refresh, load, and clear authenticated sessions
+- normalize safe redirect targets back into the web app
+
+### Google workspace client
+
+Primary file: `apps/api/app/integrations/google_workspace.py`
+
+Responsibilities:
+
+- fetch paginated Gmail inbox summaries
+- fetch full Gmail thread detail and send Gmail replies
+- fetch Google Calendar events
+- normalize Google API failures into app-friendly error messages
+
+### Gmail mailbox cache
+
+Primary file: `apps/api/app/storage/mailbox_cache.py`
+
+Responsibilities:
+
+- persist Gmail summary pages by account, query, and page token
+- persist opened Gmail thread detail by account and thread id
+- serve cached first-page inbox summaries before a background refresh
 
 ### Thread service
 
@@ -119,10 +155,10 @@ Primary file: `apps/api/app/services/thread_service.py`
 
 Responsibilities:
 
-- list thread summaries
-- fetch thread detail
-- analyze threads
-- send replies and mutate thread state
+- manage the legacy in-memory thread list
+- analyze stub-backed threads
+- return thread detail for the analysis and task demo flows
+- send direct replies in the legacy thread path
 
 ### Task service
 
@@ -141,7 +177,7 @@ Primary file: `apps/api/app/services/sync_service.py`
 
 Responsibilities:
 
-- import threads from the mail adapter
-- analyze imported threads
-- create derived tasks
-- update sync status
+- import stub-backed threads from the mail adapter
+- analyze imported threads through the legacy thread service
+- create derived tasks for the demo flow
+- update in-memory sync status
