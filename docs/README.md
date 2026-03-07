@@ -20,7 +20,8 @@ docs/
 ├── data-model/
 │   └── schema.md
 ├── deployment/
-│   └── deployment-architecture.md
+│   ├── deployment-architecture.md
+│   └── vercel-railway-runbook.md
 ├── impl/
 │   ├── frontend-design.md
 │   ├── backend-design.md
@@ -38,6 +39,7 @@ docs/
 6. [API Spec](./api/api-spec.md)
 7. [Schema](./data-model/schema.md)
 8. [Deployment Architecture](./deployment/deployment-architecture.md)
-9. [Frontend Design](./impl/frontend-design.md)
-10. [Backend Design](./impl/backend-design.md)
-11. [Implementation Plan](./impl/implementation-plan.md)
+9. [Vercel And Railway Runbook](./deployment/vercel-railway-runbook.md)
+10. [Frontend Design](./impl/frontend-design.md)
+11. [Backend Design](./impl/backend-design.md)
+12. [Implementation Plan](./impl/implementation-plan.md)

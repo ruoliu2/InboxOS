@@ -119,19 +119,28 @@ docker compose up --build
 
 ## Deploy
 
+Production deploys run from the dedicated branch `codex/deploy-vercel-railway`, which is checked out in the sibling worktree `/Users/ruo/Downloads/startup/InboxOS-deploy`. Update that branch by merging `origin/main` into it from the deploy worktree, then push the merge commit.
+
 ### Web on Vercel
 
+- production branch: `codex/deploy-vercel-railway`
 - project root: `apps/web`
 - build command: `bun run build`
 - start command: `bun run start`
-- env: `NEXT_PUBLIC_API_BASE_URL`
+- enable source files outside the root directory because `apps/web` imports from `packages/*`
+- env: `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_SESSION_COOKIE_NAME`
 
 ### API on Railway
 
+- production branch: `codex/deploy-vercel-railway`
 - service root: `apps/api`
-- deploy with `apps/api/Dockerfile` or native Python build
+- deploy with `apps/api/Dockerfile`
 - expose port `8000`
-- set env vars from `.env.example`
+- attach a persistent volume at `/data`
+- set `SESSION_DB_PATH=/data/auth_sessions.sqlite3`
+- set env vars from `.env.example` plus production overrides for `SESSION_COOKIE_SECURE`, `CORS_ORIGINS`, `WEB_BASE_URL`, and `GOOGLE_REDIRECT_URI`
+
+See [docs/deployment/vercel-railway-runbook.md](./docs/deployment/vercel-railway-runbook.md) for the full provider setup and rollout sequence.
 
 ## Current MVP Status
 
