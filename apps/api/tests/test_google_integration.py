@@ -1,3 +1,5 @@
+import base64
+import sqlite3
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -528,6 +530,123 @@ def test_gmail_route_forwards_pagination_options(client, monkeypatch):
         "page_token": "cursor-2",
         "query": "from:founder",
     }
+
+
+def test_gmail_reply_includes_from_header(monkeypatch):
+    google_client = get_google_workspace_client()
+    sent_payload: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        google_client,
+        "_get_gmail_thread_payload",
+        lambda access_token, thread_id: {
+            "messages": [
+                {
+                    "id": "message-1",
+                    "payload": {
+                        "headers": [
+                            {"name": "From", "value": "Founder <founder@example.com>"},
+                            {"name": "Subject", "value": "Launch checklist"},
+                            {"name": "Message-ID", "value": "<message-1@example.com>"},
+                        ]
+                    },
+                }
+            ]
+        },
+    )
+
+    def capture_request(method: str, url: str, **kwargs):
+        sent_payload["method"] = method
+        sent_payload["url"] = url
+        sent_payload["json"] = kwargs["json"]
+        return {}
+
+    monkeypatch.setattr(google_client, "_request", capture_request)
+    monkeypatch.setattr(
+        google_client,
+        "get_gmail_thread",
+        lambda access_token, thread_id: ThreadDetail(
+            id=thread_id,
+            subject="Launch checklist",
+            snippet="Reply sent",
+            participants=["founder@example.com", "user@gmail.com"],
+            last_message_at=datetime.now(UTC),
+            action_states=[ActionState.FYI],
+            messages=[],
+            analysis=None,
+        ),
+    )
+
+    google_client.send_gmail_reply(
+        "access-token",
+        account_email="user@gmail.com",
+        thread_id="thread-1",
+        body="Confirmed.",
+    )
+
+    assert sent_payload["method"] == "POST"
+    raw = sent_payload["json"]["raw"]
+    padded = raw + "=" * (-len(raw) % 4)
+    mime_message = base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8")
+    assert "From: user@gmail.com" in mime_message
+    assert "To: founder@example.com" in mime_message
+
+
+def test_google_client_converts_html_breaks_to_newlines():
+    google_client = get_google_workspace_client()
+    html = "<div>Line one<br>Line two<br/>Line three<br />Line four</div>"
+    encoded_html = base64.urlsafe_b64encode(html.encode("utf-8")).decode("utf-8")
+
+    body = google_client._extract_message_body(
+        {
+            "mimeType": "multipart/alternative",
+            "parts": [
+                {
+                    "mimeType": "text/html",
+                    "body": {"data": encoded_html},
+                }
+            ],
+        }
+    )
+
+    assert body == "Line one\nLine two\nLine three\nLine four"
+
+
+def test_calendar_route_preserves_explicit_time_window(client, monkeypatch):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    client.cookies.set(get_settings().session_cookie_name, session.session_id)
+
+    google_client = get_google_workspace_client()
+    captured: dict[str, datetime] = {}
+
+    def list_events(access_token: str, time_min: datetime, time_max: datetime):
+        captured["time_min"] = time_min
+        captured["time_max"] = time_max
+        return []
+
+    monkeypatch.setattr(google_client, "list_calendar_events", list_events)
+
+    response = client.get(
+        "/calendar/events?time_min=2026-03-01T10:00:00Z&time_max=2026-03-05T18:30:00Z"
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "time_min": datetime(2026, 3, 1, 10, 0, tzinfo=UTC),
+        "time_max": datetime(2026, 3, 5, 18, 30, tzinfo=UTC),
+    }
+
+
+def test_gmail_mailbox_cache_connect_closes_connection():
+    cache = get_gmail_mailbox_cache()
+
+    with cache._connect() as connection:
+        connection.execute("SELECT 1").fetchone()
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        connection.execute("SELECT 1")
 
 
 def test_google_client_lists_thread_summaries_without_full_thread_hydration(
