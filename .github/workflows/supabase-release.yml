@@ -9,7 +9,7 @@ on:
 
 concurrency:
   group: supabase-release-${{ github.ref_name }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -23,6 +23,13 @@ jobs:
       SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate branch
+        run: |
+          if [ "${{ github.ref_name }}" != "main" ] && [ "${{ github.ref_name }}" != "staging" ]; then
+            echo "ERROR: This workflow can only run on main or staging."
+            exit 1
+          fi
 
       - id: detect
         name: Detect Supabase project files

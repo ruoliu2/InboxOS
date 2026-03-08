@@ -117,8 +117,7 @@ On each push to `main` or `staging`, the workflow:
 
 - `cd apps/web && bun run build`
 - `cd apps/api && uv run --group dev python -m pytest`
-- `https://<staging-railway-domain>/health` returns `{"ok": true}`
-- `https://<production-railway-domain>/health` returns `{"ok": true}`
+- `https://<staging-railway-domain>/health` and `https://<production-railway-domain>/health` both return `{"ok": true}`
 - both deployed web apps reach their matching Railway API without CORS failures
 - Google sign-in completes and redirects back to the matching Vercel web URL in each environment
 - the session cookie is secure and HTTP-only
