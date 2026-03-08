@@ -5,7 +5,7 @@ This document captures the intended deployment shape for the current MVP.
 ## Branch Environments
 
 - `main` is the production release branch
-- `staging` is the staging release branch
+- `gamma` is the gamma release branch
 - Vercel and Railway auto deploy from their configured Git branch per environment
 - Supabase is released by GitHub Actions from the same branch mapping
 
@@ -14,9 +14,9 @@ graph TD
   A1["main"] -->|deploys to| B1["Vercel production"]
   A1 -->|deploys to| B2["Railway production"]
   A1 -->|deploys to| B3["Supabase production"]
-  A2["staging"] -->|deploys to| C1["Vercel staging"]
-  A2 -->|deploys to| C2["Railway staging"]
-  A2 -->|deploys to| C3["Supabase staging"]
+  A2["gamma"] -->|deploys to| C1["Vercel gamma"]
+  A2 -->|deploys to| C2["Railway gamma"]
+  A2 -->|deploys to| C3["Supabase gamma"]
 ```
 
 ## Hosting Plan
@@ -28,7 +28,7 @@ Platform: Vercel
 Expected settings:
 
 - production project branch: `main`
-- staging project branch: `staging`
+- gamma project branch: `gamma`
 - project root: `apps/web`
 - build command: `bun run build`
 - start command: `bun run start`
@@ -43,7 +43,7 @@ Platform: Railway
 Expected settings:
 
 - production environment branch: `main`
-- staging environment branch: `staging`
+- gamma environment branch: `gamma`
 - service root: `apps/api`
 - port: `8000`
 - deploy with `apps/api/Dockerfile`
@@ -60,10 +60,10 @@ Platform: Supabase
 Expected settings:
 
 - production project branch: `main`
-- staging project branch: `staging`
-- separate hosted Supabase projects for production and staging
+- gamma project branch: `gamma`
+- separate hosted Supabase projects for production and gamma
 - GitHub Actions workflow: `.github/workflows/supabase-release.yml`
-- GitHub environments named `production` and `staging` hold `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`, and `SUPABASE_DB_PASSWORD`
+- GitHub environments named `production` and `gamma` hold `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`, and `SUPABASE_DB_PASSWORD`
 - use Supabase local Docker through the CLI for local development
 - use `docker compose up --build` only for local all-in-one startup
 - keep schema migrations in `supabase/migrations`
