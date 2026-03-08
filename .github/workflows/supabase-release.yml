@@ -1,0 +1,78 @@
+name: supabase-release
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+  workflow_dispatch:
+
+concurrency:
+  group: supabase-release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+    permissions:
+      contents: read
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate branch
+        run: |
+          if [ "${{ github.ref_name }}" != "main" ] && [ "${{ github.ref_name }}" != "staging" ]; then
+            echo "ERROR: This workflow can only run on main or staging."
+            exit 1
+          fi
+
+      - id: detect
+        name: Detect Supabase project files
+        run: |
+          if [ -d supabase ]; then
+            echo "initialized=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "initialized=false" >> "$GITHUB_OUTPUT"
+            echo "No supabase/ directory found. Skipping Supabase release."
+          fi
+
+          if [ -d supabase/migrations ] && find supabase/migrations -name '*.sql' -print -quit | grep -q .; then
+            echo "has_migrations=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_migrations=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ -d supabase/functions ] && find supabase/functions -mindepth 1 -maxdepth 1 -type d -print -quit | grep -q .; then
+            echo "has_functions=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_functions=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.detect.outputs.initialized == 'true'
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - if: steps.detect.outputs.initialized == 'true'
+        name: Verify Supabase release secrets
+        run: |
+          test -n "$SUPABASE_ACCESS_TOKEN" || { echo "Missing SUPABASE_ACCESS_TOKEN"; exit 1; }
+          test -n "$SUPABASE_DB_PASSWORD" || { echo "Missing SUPABASE_DB_PASSWORD"; exit 1; }
+          test -n "$SUPABASE_PROJECT_ID" || { echo "Missing SUPABASE_PROJECT_ID"; exit 1; }
+
+      - if: steps.detect.outputs.initialized == 'true'
+        name: Link Supabase project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
+
+      - if: steps.detect.outputs.has_migrations == 'true'
+        name: Push Supabase migrations
+        run: supabase db push --linked --include-all
+
+      - if: steps.detect.outputs.has_functions == 'true'
+        name: Deploy Supabase edge functions
+        run: supabase functions deploy
