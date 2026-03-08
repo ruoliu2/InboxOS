@@ -144,12 +144,12 @@ docker compose up --build
 Deploys are branch-driven:
 
 - `main` auto deploys the production environment on Vercel, Railway, and Supabase
-- `staging` auto deploys the staging environment on Vercel, Railway, and Supabase
+- `gamma` auto deploys the gamma environment on Vercel, Railway, and Supabase
 
 ### Web on Vercel
 
 - production branch: `main`
-- staging branch: `staging`
+- gamma branch: `gamma`
 - project root: `apps/web`
 - build command: `bun run build`
 - start command: `bun run start`
@@ -159,7 +159,7 @@ Deploys are branch-driven:
 ### API on Railway
 
 - production branch: `main`
-- staging branch: `staging`
+- gamma branch: `gamma`
 - service root: `apps/api`
 - deploy with `apps/api/Dockerfile`
 - expose port `8000`
@@ -173,9 +173,9 @@ Deploys are branch-driven:
 ### Supabase
 
 - production branch: `main`
-- staging branch: `staging`
+- gamma branch: `gamma`
 - GitHub Actions deploys remote migrations and edge functions from `.github/workflows/supabase-release.yml`
-- create separate Supabase projects for production and staging, then map them to GitHub environments named `production` and `staging`
+- create separate Supabase projects for production and gamma, then map them to GitHub environments named `production` and `gamma`
 
 See [docs/deployment/vercel-railway-runbook.md](./docs/deployment/vercel-railway-runbook.md) for the full provider setup and rollout sequence.
 

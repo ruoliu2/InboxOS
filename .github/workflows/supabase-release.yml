@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - staging
+      - gamma
   workflow_dispatch:
 
 concurrency:
@@ -14,7 +14,7 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+    environment: ${{ github.ref_name == 'main' && 'production' || 'gamma' }}
     permissions:
       contents: read
     env:
@@ -26,8 +26,8 @@ jobs:
 
       - name: Validate branch
         run: |
-          if [ "${{ github.ref_name }}" != "main" ] && [ "${{ github.ref_name }}" != "staging" ]; then
-            echo "ERROR: This workflow can only run on main or staging."
+          if [ "${{ github.ref_name }}" != "main" ] && [ "${{ github.ref_name }}" != "gamma" ]; then
+            echo "ERROR: This workflow can only run on main or gamma."
             exit 1
           fi
 
