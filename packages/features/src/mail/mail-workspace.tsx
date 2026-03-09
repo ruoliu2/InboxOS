@@ -30,7 +30,7 @@ import {
   Triangle,
 } from "lucide-react";
 
-import { api } from "@inboxos/lib/api";
+import { ApiError, api } from "@inboxos/lib/api";
 import { formatDate } from "@inboxos/lib/format";
 import {
   AuthSessionResponse,
@@ -357,6 +357,14 @@ export function MailWorkspace({
   const unreadOnly = listTab === "unread";
   const activeHeading = mailboxHeading(mailbox);
 
+  const handleAuthError = useCallback((error: unknown): boolean => {
+    if (error instanceof ApiError && error.status === 401) {
+      window.location.href = "/auth";
+      return true;
+    }
+    return false;
+  }, []);
+
   useEffect(() => {
     for (const thread of initialThreadPage?.threads ?? []) {
       if (thread.state === "ready") {
@@ -373,10 +381,13 @@ export function MailWorkspace({
     try {
       const counts = await api.getGmailMailboxCounts();
       setMailboxCounts(counts);
-    } catch {
+    } catch (loadError) {
+      if (handleAuthError(loadError)) {
+        return;
+      }
       setMailboxCounts(EMPTY_MAILBOX_COUNTS);
     }
-  }, [session?.authenticated]);
+  }, [handleAuthError, session?.authenticated]);
 
   const resetHydration = useCallback(() => {
     hydrationEpochRef.current += 1;
@@ -384,38 +395,44 @@ export function MailWorkspace({
     hydratedIdsRef.current.clear();
   }, []);
 
-  const hydrateThreadIds = useCallback(async (threadIds: string[]) => {
-    const normalized = threadIds.filter((threadId) => {
-      return (
-        Boolean(threadId) &&
-        !hydratedIdsRef.current.has(threadId) &&
-        !hydratingIdsRef.current.has(threadId)
-      );
-    });
-    if (normalized.length === 0) {
-      return;
-    }
-
-    const requestId = hydrationEpochRef.current;
-    normalized.forEach((threadId) => hydratingIdsRef.current.add(threadId));
-    try {
-      const response = await api.hydrateGmailThreads(normalized);
-      if (requestId !== hydrationEpochRef.current) {
+  const hydrateThreadIds = useCallback(
+    async (threadIds: string[]) => {
+      const normalized = threadIds.filter((threadId) => {
+        return (
+          Boolean(threadId) &&
+          !hydratedIdsRef.current.has(threadId) &&
+          !hydratingIdsRef.current.has(threadId)
+        );
+      });
+      if (normalized.length === 0) {
         return;
       }
-      const readyThreads = Object.values(response.threads);
-      readyThreads.forEach((thread) => hydratedIdsRef.current.add(thread.id));
-      setThreads((current) => mergeReadyThreads(current, readyThreads));
-    } catch (hydrateError) {
-      if (requestId === hydrationEpochRef.current) {
-        setError((hydrateError as Error).message);
+
+      const requestId = hydrationEpochRef.current;
+      normalized.forEach((threadId) => hydratingIdsRef.current.add(threadId));
+      try {
+        const response = await api.hydrateGmailThreads(normalized);
+        if (requestId !== hydrationEpochRef.current) {
+          return;
+        }
+        const readyThreads = Object.values(response.threads);
+        readyThreads.forEach((thread) => hydratedIdsRef.current.add(thread.id));
+        setThreads((current) => mergeReadyThreads(current, readyThreads));
+      } catch (hydrateError) {
+        if (handleAuthError(hydrateError)) {
+          return;
+        }
+        if (requestId === hydrationEpochRef.current) {
+          setError((hydrateError as Error).message);
+        }
+      } finally {
+        normalized.forEach((threadId) =>
+          hydratingIdsRef.current.delete(threadId),
+        );
       }
-    } finally {
-      normalized.forEach((threadId) =>
-        hydratingIdsRef.current.delete(threadId),
-      );
-    }
-  }, []);
+    },
+    [handleAuthError],
+  );
 
   const loadInitialThreads = useCallback(async () => {
     if (!session?.authenticated) {
@@ -453,6 +470,9 @@ export function MailWorkspace({
         }
       });
     } catch (loadError) {
+      if (handleAuthError(loadError)) {
+        return;
+      }
       if (requestId !== listRequestIdRef.current) {
         return;
       }
@@ -465,7 +485,14 @@ export function MailWorkspace({
         setLoadingList(false);
       }
     }
-  }, [activeHeading, mailbox, searchQuery, session?.authenticated, unreadOnly]);
+  }, [
+    activeHeading,
+    handleAuthError,
+    mailbox,
+    searchQuery,
+    session?.authenticated,
+    unreadOnly,
+  ]);
 
   const loadMoreThreads = useCallback(async () => {
     if (
@@ -502,6 +529,9 @@ export function MailWorkspace({
         }
       });
     } catch (loadError) {
+      if (handleAuthError(loadError)) {
+        return;
+      }
       if (requestId === listRequestIdRef.current) {
         setError((loadError as Error).message);
       }
@@ -516,6 +546,7 @@ export function MailWorkspace({
     mailbox,
     nextPageToken,
     searchQuery,
+    handleAuthError,
     session?.authenticated,
     unreadOnly,
   ]);
@@ -564,6 +595,9 @@ export function MailWorkspace({
         setSession(nextSession);
       } catch (sessionError) {
         if (isMounted) {
+          if (handleAuthError(sessionError)) {
+            return;
+          }
           setError((sessionError as Error).message);
         }
       } finally {
@@ -577,7 +611,7 @@ export function MailWorkspace({
     return () => {
       isMounted = false;
     };
-  }, [initialSession]);
+  }, [handleAuthError, initialSession]);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -682,6 +716,9 @@ export function MailWorkspace({
         if (threadRequestIdRef.current !== requestId) {
           return;
         }
+        if (handleAuthError(loadError)) {
+          return;
+        }
         setSelectedThread(null);
         setError((loadError as Error).message);
       })
@@ -690,7 +727,7 @@ export function MailWorkspace({
           setLoadingThread(false);
         }
       });
-  }, [selectedThreadId]);
+  }, [handleAuthError, selectedThreadId]);
 
   useEffect(() => {
     if (loadingList || loadingMore || !hasMore || !loadMoreTriggerRef.current) {
@@ -993,13 +1030,22 @@ export function MailWorkspace({
           }[action],
         );
       } catch (actionError) {
+        if (handleAuthError(actionError)) {
+          return;
+        }
         setError((actionError as Error).message);
       } finally {
         setActionInFlight(null);
         setConfirmState(null);
       }
     },
-    [loadInitialThreads, loadMailboxCounts, mailbox, selectedThreadId],
+    [
+      handleAuthError,
+      loadInitialThreads,
+      loadMailboxCounts,
+      mailbox,
+      selectedThreadId,
+    ],
   );
 
   const moreMenuItems = useMemo(() => {
@@ -1070,6 +1116,9 @@ export function MailWorkspace({
         }[result.mode],
       );
     } catch (composeError) {
+      if (handleAuthError(composeError)) {
+        return;
+      }
       setError((composeError as Error).message);
     } finally {
       setSendingCompose(false);
@@ -1100,6 +1149,9 @@ export function MailWorkspace({
       clearNewMessageComposer();
       setNotice("New email sent through Gmail.");
     } catch (sendError) {
+      if (handleAuthError(sendError)) {
+        return;
+      }
       setError((sendError as Error).message);
     } finally {
       setSendingNewMessage(false);

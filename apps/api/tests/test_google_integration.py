@@ -2635,3 +2635,93 @@ def test_opening_gmail_thread_updates_detail_cache(client, monkeypatch):
     assert cached_thread is not None
     assert cached_thread.id == "gmail-thread-2"
     assert cached_thread.messages[0].body_html == payload["messages"][0]["body_html"]
+
+
+def test_opening_gmail_thread_recovers_missing_session_account_email(
+    client, monkeypatch
+):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    with auth_store._lock, auth_store._connect() as connection:
+        connection.execute(
+            """
+            UPDATE linked_accounts
+            SET provider_account_ref = NULL
+            WHERE id = (
+                SELECT active_linked_account_id
+                FROM app_sessions
+                WHERE session_id = ?
+            )
+            """,
+            (session.session_id,),
+        )
+        connection.commit()
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
+
+    google_client = get_google_workspace_client()
+    thread = ThreadDetail(
+        id="gmail-thread-3",
+        subject="Recovered detail",
+        snippet="Recovered detail payload",
+        participants=["founder@gmail.com", "user@gmail.com"],
+        last_message_at=datetime.now(UTC),
+        action_states=[ActionState.FYI],
+        messages=[
+            ThreadMessage(
+                id="gmail-message-3",
+                sender="founder@gmail.com",
+                sent_at=datetime.now(UTC),
+                body="Recovered detail payload",
+            )
+        ],
+        analysis=None,
+    )
+    monkeypatch.setattr(
+        google_client, "get_gmail_thread", lambda access_token, thread_id: thread
+    )
+
+    response = client.get("/gmail/threads/gmail-thread-3")
+
+    assert response.status_code == 200
+    cached_thread = get_gmail_mailbox_cache().get_thread_detail(
+        "user@gmail.com",
+        "gmail-thread-3",
+    )
+    assert cached_thread is not None
+    assert cached_thread.id == "gmail-thread-3"
+
+
+def test_opening_gmail_thread_rejects_recovery_from_other_users_account(client):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    with auth_store._lock, auth_store._connect() as connection:
+        connection.execute(
+            """
+            UPDATE linked_accounts
+            SET provider_account_ref = NULL,
+                user_id = 'other-user'
+            WHERE id = (
+                SELECT active_linked_account_id
+                FROM app_sessions
+                WHERE session_id = ?
+            )
+            """,
+            (session.session_id,),
+        )
+        connection.commit()
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
+
+    response = client.get("/gmail/threads/gmail-thread-4")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "An active linked Google account is required."
