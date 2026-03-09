@@ -13,6 +13,8 @@ from app.services.dependencies import (
     get_auth_store,
     get_conversation_store,
     get_gmail_mailbox_cache,
+    get_gmail_mailbox_service,
+    get_gmail_mailbox_store,
     get_google_workspace_client,
     get_task_service,
     get_task_store,
@@ -44,18 +46,23 @@ def reset_store_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     get_auth_store.cache_clear()
     get_conversation_store.cache_clear()
     get_gmail_mailbox_cache.cache_clear()
+    get_gmail_mailbox_service.cache_clear()
+    get_gmail_mailbox_store.cache_clear()
     get_google_workspace_client.cache_clear()
     get_task_store.cache_clear()
     get_task_service.cache_clear()
     get_auth_store().clear()
     get_conversation_store().clear()
     get_gmail_mailbox_cache().clear()
+    get_gmail_mailbox_store().clear()
     get_task_store().clear()
     yield
     get_auth_service.cache_clear()
     get_auth_store.cache_clear()
     get_conversation_store.cache_clear()
     get_gmail_mailbox_cache.cache_clear()
+    get_gmail_mailbox_service.cache_clear()
+    get_gmail_mailbox_store.cache_clear()
     get_google_workspace_client.cache_clear()
     get_task_store.cache_clear()
     get_task_service.cache_clear()

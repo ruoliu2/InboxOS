@@ -10,7 +10,7 @@ type AuthSessionStatus = {
   authenticated: boolean;
 };
 
-async function getAuthSessionStatus(): Promise<AuthSessionStatus> {
+export async function getAuthSessionStatus(): Promise<AuthSessionStatus> {
   const cookieStore = cookies();
   const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   if (!sessionCookie) {

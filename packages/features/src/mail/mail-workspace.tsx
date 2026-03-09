@@ -36,8 +36,10 @@ import {
   MailboxKey,
   ThreadActionName,
   ThreadDetail,
+  ThreadListItem,
   ThreadMessage,
   ThreadSummary,
+  ThreadSummaryPage,
 } from "@inboxos/types";
 import { Button } from "@inboxos/ui/button";
 import { ConfirmDialog } from "@inboxos/ui/confirm-dialog";
@@ -52,6 +54,8 @@ import {
 type ListTab = "all" | "unread";
 
 type MailWorkspaceProps = {
+  initialSession?: AuthSessionResponse | null;
+  initialThreadPage?: ThreadSummaryPage | null;
   initialThreadId?: string | null;
 };
 
@@ -63,6 +67,7 @@ type ConfirmState = {
 } | null;
 
 const PAGE_SIZE = 20;
+const HYDRATE_BATCH_SIZE = 8;
 const EMPTY_MAILBOX_COUNTS: MailboxCounts = {
   inbox: null,
   sent: null,
@@ -83,8 +88,10 @@ const primaryFolders: Array<{
   { key: "junk", label: "Junk", icon: ArchiveX },
 ];
 
-function isUnread(thread: ThreadSummary): boolean {
-  return thread.action_states.some((state) => state !== "fyi");
+function isReadyThread(
+  thread: ThreadListItem | ThreadDetail,
+): thread is ThreadSummary {
+  return "state" in thread && thread.state === "ready";
 }
 
 function normalizedEmail(value: string | null | undefined): string | null {
@@ -186,6 +193,7 @@ function mailboxHeading(value: MailboxKey): string {
 
 function toThreadSummary(thread: ThreadDetail): ThreadSummary {
   return {
+    state: "ready",
     id: thread.id,
     subject: thread.subject,
     snippet: thread.snippet,
@@ -195,11 +203,27 @@ function toThreadSummary(thread: ThreadDetail): ThreadSummary {
   };
 }
 
-function mergeThreadSummaries(
-  current: ThreadSummary[],
+function mergeThreadItems(
+  current: ThreadListItem[],
+  incoming: ThreadListItem[],
+): ThreadListItem[] {
+  if (incoming.length === 0) {
+    return current;
+  }
+
+  const incomingById = new Map(incoming.map((thread) => [thread.id, thread]));
+  const currentIds = new Set(current.map((thread) => thread.id));
+  return [
+    ...current.map((thread) => incomingById.get(thread.id) ?? thread),
+    ...incoming.filter((thread) => !currentIds.has(thread.id)),
+  ];
+}
+
+function mergeReadyThreads(
+  current: ThreadListItem[],
   incoming: ThreadSummary[],
   position: "append" | "prepend" = "append",
-): ThreadSummary[] {
+): ThreadListItem[] {
   if (incoming.length === 0) {
     return current;
   }
@@ -236,12 +260,27 @@ function revokeAttachmentPreviews(attachments: NewMessageAttachment[]): void {
   }
 }
 
-export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
-  const [session, setSession] = useState<AuthSessionResponse | null>(null);
-  const [sessionChecked, setSessionChecked] = useState(false);
+function buildSkeletonRows(count = 6): ThreadListItem[] {
+  return Array.from({ length: count }, (_, index) => ({
+    state: "placeholder" as const,
+    id: `skeleton-${index + 1}`,
+  }));
+}
+
+export function MailWorkspace({
+  initialSession,
+  initialThreadPage,
+  initialThreadId,
+}: MailWorkspaceProps) {
+  const [session, setSession] = useState<AuthSessionResponse | null>(
+    initialSession ?? null,
+  );
+  const [sessionChecked, setSessionChecked] = useState(Boolean(initialSession));
   const [mailboxCounts, setMailboxCounts] =
     useState<MailboxCounts>(EMPTY_MAILBOX_COUNTS);
-  const [threads, setThreads] = useState<ThreadSummary[]>([]);
+  const [threads, setThreads] = useState<ThreadListItem[]>(
+    initialThreadPage?.threads ?? [],
+  );
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(
     initialThreadId ?? null,
   );
@@ -259,15 +298,17 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   const [forwardBcc, setForwardBcc] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loadingList, setLoadingList] = useState(true);
+  const [loadingList, setLoadingList] = useState(!initialThreadPage);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadingThread, setLoadingThread] = useState(false);
   const [sendingCompose, setSendingCompose] = useState(false);
   const [actionInFlight, setActionInFlight] = useState<ThreadActionName | null>(
     null,
   );
-  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
+  const [nextPageToken, setNextPageToken] = useState<string | null>(
+    initialThreadPage?.next_page_token ?? null,
+  );
+  const [hasMore, setHasMore] = useState(initialThreadPage?.has_more ?? false);
   const [confirmState, setConfirmState] = useState<ConfirmState>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [newMessageOpen, setNewMessageOpen] = useState(false);
@@ -282,13 +323,26 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   const [newMessageMaximized, setNewMessageMaximized] = useState(false);
   const [scheduleMenuOpen, setScheduleMenuOpen] = useState(false);
   const threadRequestIdRef = useRef(0);
+  const listRequestIdRef = useRef(0);
+  const hydrationEpochRef = useRef(0);
+  const hydratedIdsRef = useRef<Set<string>>(new Set());
+  const hydratingIdsRef = useRef<Set<string>>(new Set());
+  const bootstrappedListRef = useRef(Boolean(initialThreadPage));
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const listScrollerRef = useRef<HTMLDivElement | null>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
-  const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const newMessageAttachmentsRef = useRef<NewMessageAttachment[]>([]);
 
   const unreadOnly = listTab === "unread";
   const activeHeading = mailboxHeading(mailbox);
+
+  useEffect(() => {
+    for (const thread of initialThreadPage?.threads ?? []) {
+      if (thread.state === "ready") {
+        hydratedIdsRef.current.add(thread.id);
+      }
+    }
+  }, [initialThreadPage?.threads]);
 
   const loadMailboxCounts = useCallback(async () => {
     if (!session?.authenticated) {
@@ -303,11 +357,59 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     }
   }, [session?.authenticated]);
 
+  const resetHydration = useCallback(() => {
+    hydrationEpochRef.current += 1;
+    hydratingIdsRef.current.clear();
+    hydratedIdsRef.current = new Set(
+      threads
+        .filter((thread): thread is ThreadSummary => thread.state === "ready")
+        .map((thread) => thread.id),
+    );
+  }, [threads]);
+
+  const hydrateThreadIds = useCallback(async (threadIds: string[]) => {
+    const normalized = threadIds.filter((threadId) => {
+      return (
+        Boolean(threadId) &&
+        !hydratedIdsRef.current.has(threadId) &&
+        !hydratingIdsRef.current.has(threadId)
+      );
+    });
+    if (normalized.length === 0) {
+      return;
+    }
+
+    const requestId = hydrationEpochRef.current;
+    normalized.forEach((threadId) => hydratingIdsRef.current.add(threadId));
+    try {
+      const response = await api.hydrateGmailThreads(normalized);
+      if (requestId !== hydrationEpochRef.current) {
+        return;
+      }
+      const readyThreads = Object.values(response.threads);
+      readyThreads.forEach((thread) => hydratedIdsRef.current.add(thread.id));
+      setThreads((current) => mergeReadyThreads(current, readyThreads));
+    } catch (hydrateError) {
+      if (requestId === hydrationEpochRef.current) {
+        setError((hydrateError as Error).message);
+      }
+    } finally {
+      normalized.forEach((threadId) =>
+        hydratingIdsRef.current.delete(threadId),
+      );
+    }
+  }, []);
+
   const loadInitialThreads = useCallback(async () => {
     if (!session?.authenticated) {
       return;
     }
 
+    const requestId = listRequestIdRef.current + 1;
+    listRequestIdRef.current = requestId;
+    hydrationEpochRef.current += 1;
+    hydratingIdsRef.current.clear();
+    hydratedIdsRef.current.clear();
     setLoadingList(true);
     setError(null);
     setNotice(null);
@@ -319,19 +421,32 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
         mailbox,
         unread_only: unreadOnly,
       });
+      if (requestId !== listRequestIdRef.current) {
+        return;
+      }
       setThreads(page.threads);
       setNextPageToken(page.next_page_token);
       setHasMore(page.has_more);
       if (page.threads.length === 0) {
         setNotice(`No ${activeHeading.toLowerCase()} threads were found.`);
       }
+      page.threads.forEach((thread) => {
+        if (thread.state === "ready") {
+          hydratedIdsRef.current.add(thread.id);
+        }
+      });
     } catch (loadError) {
+      if (requestId !== listRequestIdRef.current) {
+        return;
+      }
       setError((loadError as Error).message);
       setThreads([]);
       setNextPageToken(null);
       setHasMore(false);
     } finally {
-      setLoadingList(false);
+      if (requestId === listRequestIdRef.current) {
+        setLoadingList(false);
+      }
     }
   }, [activeHeading, mailbox, searchQuery, session?.authenticated, unreadOnly]);
 
@@ -345,6 +460,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
       return;
     }
 
+    const requestId = listRequestIdRef.current;
     setLoadingMore(true);
     setError(null);
     setNotice(null);
@@ -357,13 +473,25 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
         mailbox,
         unread_only: unreadOnly,
       });
-      setThreads((current) => mergeThreadSummaries(current, page.threads));
+      if (requestId !== listRequestIdRef.current) {
+        return;
+      }
+      setThreads((current) => mergeThreadItems(current, page.threads));
       setNextPageToken(page.next_page_token);
       setHasMore(page.has_more);
+      page.threads.forEach((thread) => {
+        if (thread.state === "ready") {
+          hydratedIdsRef.current.add(thread.id);
+        }
+      });
     } catch (loadError) {
-      setError((loadError as Error).message);
+      if (requestId === listRequestIdRef.current) {
+        setError((loadError as Error).message);
+      }
     } finally {
-      setLoadingMore(false);
+      if (requestId === listRequestIdRef.current) {
+        setLoadingMore(false);
+      }
     }
   }, [
     loadingList,
@@ -400,6 +528,10 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   }, []);
 
   useEffect(() => {
+    if (initialSession) {
+      return;
+    }
+
     let isMounted = true;
 
     async function loadSession() {
@@ -428,7 +560,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [initialSession]);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -450,11 +582,44 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     if (!sessionChecked || !session?.authenticated) {
       return;
     }
+
     setSelectedThreadId(null);
     setSelectedThread(null);
     setShowMoreMenu(false);
+    resetHydration();
+
+    if (
+      bootstrappedListRef.current &&
+      mailbox === "inbox" &&
+      !unreadOnly &&
+      !searchQuery
+    ) {
+      bootstrappedListRef.current = false;
+      return;
+    }
+
+    bootstrappedListRef.current = false;
     void loadInitialThreads();
-  }, [loadInitialThreads, session?.authenticated, sessionChecked]);
+  }, [
+    loadInitialThreads,
+    mailbox,
+    resetHydration,
+    searchQuery,
+    session?.authenticated,
+    sessionChecked,
+    unreadOnly,
+  ]);
+
+  useEffect(() => {
+    const unresolved = threads
+      .filter((thread) => thread.state === "placeholder")
+      .slice(0, HYDRATE_BATCH_SIZE)
+      .map((thread) => thread.id);
+    if (unresolved.length === 0) {
+      return;
+    }
+    void hydrateThreadIds(unresolved);
+  }, [hydrateThreadIds, threads]);
 
   useEffect(() => {
     setComposeMode("reply");
@@ -486,7 +651,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
         }
         setSelectedThread(data);
         setThreads((current) =>
-          mergeThreadSummaries(
+          mergeReadyThreads(
             current,
             [toThreadSummary(data)],
             current.some((thread) => thread.id === data.id)
@@ -494,6 +659,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
               : "prepend",
           ),
         );
+        hydratedIdsRef.current.add(data.id);
       })
       .catch((loadError) => {
         if (threadRequestIdRef.current !== requestId) {
@@ -648,12 +814,13 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
         if (updatedThread) {
           setSelectedThread(updatedThread);
           setThreads((current) =>
-            mergeThreadSummaries(
+            mergeReadyThreads(
               current,
               [toThreadSummary(updatedThread)],
               "prepend",
             ),
           );
+          hydratedIdsRef.current.add(updatedThread.id);
         }
 
         if (shouldClearSelection || result.deleted) {
@@ -732,12 +899,9 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
       });
       setSelectedThread(result.thread);
       setThreads((current) =>
-        mergeThreadSummaries(
-          current,
-          [toThreadSummary(result.thread)],
-          "prepend",
-        ),
+        mergeReadyThreads(current, [toThreadSummary(result.thread)], "prepend"),
       );
+      hydratedIdsRef.current.add(result.thread.id);
       await loadMailboxCounts();
       setComposeBody("");
       setForwardTo("");
@@ -797,6 +961,9 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     }
   }
 
+  const listRows =
+    threads.length === 0 && loadingList ? buildSkeletonRows() : threads;
+
   return (
     <>
       <main className="mail-shell panel-surface">
@@ -835,7 +1002,8 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
 
           <div className="mail-folder-group">
             <p className="folder-note">
-              Gmail folders and search now reflect live mailbox state.
+              Inbox rows load from cached summaries first, then fill from Gmail
+              metadata.
             </p>
             <button
               className="folder-row signout-row"
@@ -885,68 +1053,75 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
 
           {notice ? <p className="status inline-status">{notice}</p> : null}
           {error ? <p className="status error inline-status">{error}</p> : null}
-          {loadingList ? (
-            <p className="list-empty">Loading Gmail threads...</p>
-          ) : null}
 
-          {!loadingList ? (
-            <div className="mail-card-list" ref={listScrollerRef}>
-              {threads.length === 0 && !error ? (
-                <p className="list-empty">No messages in this Gmail view.</p>
-              ) : null}
-              {threads.map((thread) => {
-                const name = displayNameFromThread(
-                  thread,
-                  session?.account_email,
-                );
-                const labels = labelsFromThread(thread);
-                return (
-                  <button
-                    key={thread.id}
-                    className={`mail-card ${thread.id === selectedThreadId ? "active" : ""}`.trim()}
-                    onClick={() => {
-                      if (thread.id === selectedThreadId) {
-                        return;
-                      }
-                      setSelectedThread(null);
-                      setLoadingThread(true);
-                      setError(null);
-                      setSelectedThreadId(thread.id);
-                    }}
-                    type="button"
-                  >
-                    <div className="mail-card-row">
-                      <strong>{name}</strong>
-                      <span>{relativeTime(thread.last_message_at)}</span>
+          <div className="mail-card-list" ref={listScrollerRef}>
+            {listRows.length === 0 && !loadingList && !error ? (
+              <p className="list-empty">No messages in this Gmail view.</p>
+            ) : null}
+            {listRows.map((thread) => {
+              const readyThread = isReadyThread(thread) ? thread : null;
+              const name = readyThread
+                ? displayNameFromThread(readyThread, session?.account_email)
+                : "Loading thread";
+              const labels = readyThread ? labelsFromThread(readyThread) : [];
+              return (
+                <button
+                  key={thread.id}
+                  className={`mail-card ${thread.id === selectedThreadId ? "active" : ""} ${readyThread ? "" : "mail-card-placeholder"}`.trim()}
+                  disabled={!readyThread && thread.id.startsWith("skeleton-")}
+                  onClick={() => {
+                    if (thread.id === selectedThreadId) {
+                      return;
+                    }
+                    setSelectedThread(null);
+                    setLoadingThread(true);
+                    setError(null);
+                    setSelectedThreadId(thread.id);
+                  }}
+                  type="button"
+                >
+                  {readyThread ? (
+                    <>
+                      <div className="mail-card-row">
+                        <strong>{name}</strong>
+                        <span>{relativeTime(readyThread.last_message_at)}</span>
+                      </div>
+                      <p className="mail-card-subject">{readyThread.subject}</p>
+                      <p className="mail-card-snippet">{readyThread.snippet}</p>
+                      <div className="mail-card-labels">
+                        {labels.map((label) => (
+                          <span
+                            key={`${thread.id}-${label}`}
+                            className="label-pill"
+                          >
+                            {label}
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="mail-card-placeholder-content" aria-hidden>
+                      <div className="mail-card-skeleton mail-card-skeleton-title" />
+                      <div className="mail-card-skeleton mail-card-skeleton-subject" />
+                      <div className="mail-card-skeleton mail-card-skeleton-line" />
+                      <div className="mail-card-skeleton mail-card-skeleton-line short" />
                     </div>
-                    <p className="mail-card-subject">{thread.subject}</p>
-                    <p className="mail-card-snippet">{thread.snippet}</p>
-                    <div className="mail-card-labels">
-                      {labels.map((label) => (
-                        <span
-                          key={`${thread.id}-${label}`}
-                          className="label-pill"
-                        >
-                          {label}
-                        </span>
-                      ))}
-                    </div>
-                  </button>
-                );
-              })}
+                  )}
+                </button>
+              );
+            })}
 
-              {hasMore ? (
-                <div className="mail-list-footer">
-                  {loadingMore ? <span>Loading older mail...</span> : null}
-                  <div
-                    ref={loadMoreTriggerRef}
-                    className="mail-list-sentinel"
-                    aria-hidden
-                  />
-                </div>
-              ) : null}
-            </div>
-          ) : null}
+            {hasMore ? (
+              <div className="mail-list-footer">
+                {loadingMore ? <span>Loading older mail...</span> : null}
+                <div
+                  ref={loadMoreTriggerRef}
+                  className="mail-list-sentinel"
+                  aria-hidden
+                />
+              </div>
+            ) : null}
+          </div>
         </section>
 
         <section className="mail-read-pane">

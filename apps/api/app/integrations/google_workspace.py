@@ -92,6 +92,26 @@ class GmailThreadActionResult:
     deleted: bool = False
 
 
+@dataclass
+class GmailThreadIdPage:
+    thread_ids: list[str]
+    next_page_token: str | None
+    total_count: int | None
+
+
+@dataclass
+class GmailHistoryPage:
+    history_id: str
+    changed_thread_ids: list[str]
+    deleted_thread_ids: list[str]
+
+
+@dataclass
+class GmailWatchResult:
+    history_id: str
+    expiration: datetime | None
+
+
 class GoogleWorkspaceClient:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -174,11 +194,40 @@ class GoogleWorkspaceClient:
         unread_only: bool = False,
         query: str | None = None,
     ) -> ThreadSummaryPage:
+        page = self.list_gmail_thread_ids(
+            access_token,
+            max_results=max_results,
+            page_token=page_token,
+            mailbox=mailbox,
+            unread_only=unread_only,
+            query=query,
+        )
+        threads = self.get_gmail_thread_summaries(access_token, page.thread_ids)
+        return ThreadSummaryPage(
+            threads=threads,
+            next_page_token=page.next_page_token,
+            has_more=page.next_page_token is not None,
+            total_count=page.total_count,
+            hydrated_count=len(threads),
+            source="live",
+        )
+
+    def list_gmail_thread_ids(
+        self,
+        access_token: str,
+        *,
+        max_results: int = 20,
+        page_token: str | None = None,
+        mailbox: MailboxKey = MailboxKey.INBOX,
+        unread_only: bool = False,
+        query: str | None = None,
+    ) -> GmailThreadIdPage:
         params: dict[str, str] = {
             "maxResults": str(max_results),
             "includeSpamTrash": (
                 "true" if mailbox in (MailboxKey.TRASH, MailboxKey.JUNK) else "false"
             ),
+            "fields": "threads/id,nextPageToken,resultSizeEstimate",
         }
         label_id = self._gmail_label_for_mailbox(mailbox)
         if label_id is not None:
@@ -202,22 +251,25 @@ class GoogleWorkspaceClient:
             if str(item.get("id") or "").strip()
         ]
         if not thread_ids:
-            return ThreadSummaryPage(
+            return GmailThreadIdPage(
+                thread_ids=[],
                 next_page_token=next_page_token,
-                has_more=next_page_token is not None,
                 total_count=total_count,
             )
-
-        fetch_summary = partial(self.get_gmail_thread_summary, access_token)
-        with ThreadPoolExecutor(max_workers=min(6, len(thread_ids))) as executor:
-            threads = list(executor.map(fetch_summary, thread_ids))
-
-        return ThreadSummaryPage(
-            threads=threads,
+        return GmailThreadIdPage(
+            thread_ids=thread_ids,
             next_page_token=next_page_token,
-            has_more=next_page_token is not None,
             total_count=total_count,
         )
+
+    def get_gmail_thread_summaries(
+        self, access_token: str, thread_ids: list[str]
+    ) -> list[ThreadSummary]:
+        if not thread_ids:
+            return []
+        fetch_summary = partial(self.get_gmail_thread_summary, access_token)
+        with ThreadPoolExecutor(max_workers=min(6, len(thread_ids))) as executor:
+            return list(executor.map(fetch_summary, thread_ids))
 
     def get_gmail_mailbox_counts(self, access_token: str) -> MailboxCountsResponse:
         label_ids = ("INBOX", "SENT", "TRASH", "SPAM")
@@ -231,6 +283,78 @@ class GoogleWorkspaceClient:
             archive=None,
             trash=counts_by_label.get("TRASH"),
             junk=counts_by_label.get("SPAM"),
+        )
+
+    def list_gmail_history(
+        self, access_token: str, *, start_history_id: str
+    ) -> GmailHistoryPage:
+        payload = self._request(
+            "GET",
+            f"{GMAIL_API_BASE}/history",
+            access_token=access_token,
+            params={
+                "startHistoryId": start_history_id,
+                "historyTypes": "messageAdded",
+                "fields": (
+                    "history(id,messagesAdded/message/threadId,"
+                    "messagesDeleted/message/threadId,labelsAdded/message/threadId,"
+                    "labelsRemoved/message/threadId),historyId"
+                ),
+            },
+        )
+        changed_ids: list[str] = []
+        deleted_ids: list[str] = []
+        seen_changed: set[str] = set()
+        seen_deleted: set[str] = set()
+
+        for item in payload.get("history", []) or []:
+            for collection_name in (
+                "messagesAdded",
+                "labelsAdded",
+                "labelsRemoved",
+            ):
+                for entry in item.get(collection_name, []) or []:
+                    thread_id = str(
+                        entry.get("message", {}).get("threadId") or ""
+                    ).strip()
+                    if thread_id and thread_id not in seen_changed:
+                        seen_changed.add(thread_id)
+                        changed_ids.append(thread_id)
+            for entry in item.get("messagesDeleted", []) or []:
+                thread_id = str(entry.get("message", {}).get("threadId") or "").strip()
+                if thread_id and thread_id not in seen_deleted:
+                    seen_deleted.add(thread_id)
+                    deleted_ids.append(thread_id)
+
+        return GmailHistoryPage(
+            history_id=str(payload.get("historyId") or start_history_id).strip()
+            or start_history_id,
+            changed_thread_ids=changed_ids,
+            deleted_thread_ids=deleted_ids,
+        )
+
+    def watch_gmail_mailbox(
+        self, access_token: str, *, topic_name: str
+    ) -> GmailWatchResult:
+        payload = self._request(
+            "POST",
+            f"{GMAIL_API_BASE}/watch",
+            access_token=access_token,
+            json={"topicName": topic_name},
+        )
+        expiration_raw = str(payload.get("expiration") or "").strip()
+        expiration = None
+        if expiration_raw:
+            try:
+                expiration = datetime.fromtimestamp(
+                    int(expiration_raw) / 1000,
+                    tz=UTC,
+                )
+            except (TypeError, ValueError, OSError):
+                expiration = None
+        return GmailWatchResult(
+            history_id=str(payload.get("historyId") or "").strip(),
+            expiration=expiration,
         )
 
     def get_gmail_thread_summary(
@@ -595,7 +719,17 @@ class GoogleWorkspaceClient:
             "GET",
             f"{GMAIL_API_BASE}/threads/{thread_id}",
             access_token=access_token,
-            params={"format": "metadata"},
+            params=[
+                ("format", "metadata"),
+                (
+                    "fields",
+                    "id,snippet,historyId,messages(id,internalDate,labelIds,payload/headers)",
+                ),
+                ("metadataHeaders", "Subject"),
+                ("metadataHeaders", "From"),
+                ("metadataHeaders", "To"),
+                ("metadataHeaders", "Cc"),
+            ],
         )
 
     def _get_gmail_attachment_payload(
@@ -616,7 +750,7 @@ class GoogleWorkspaceClient:
         url: str,
         *,
         access_token: str | None = None,
-        params: dict[str, str] | None = None,
+        params: dict[str, str] | list[tuple[str, str]] | None = None,
         data: dict[str, str] | None = None,
         json: dict[str, Any] | None = None,
     ) -> dict[str, Any]:

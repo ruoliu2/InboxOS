@@ -400,6 +400,18 @@ textarea {
   background: #f3f4f6;
 }
 
+.mail-card-placeholder {
+  border-style: dashed;
+  border-color: #d6dce6;
+  color: var(--muted);
+}
+
+.mail-card-placeholder-content {
+  width: 100%;
+  display: grid;
+  gap: 10px;
+}
+
 .mail-card-row {
   display: flex;
   align-items: center;
@@ -440,6 +452,30 @@ textarea {
   overflow: hidden;
 }
 
+.mail-card-skeleton {
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #eef1f5 0%, #f8fafc 50%, #eef1f5 100%);
+  background-size: 220px 100%;
+  animation: mail-skeleton 1.25s linear infinite;
+}
+
+.mail-card-skeleton-title {
+  width: 46%;
+}
+
+.mail-card-skeleton-subject {
+  width: 72%;
+}
+
+.mail-card-skeleton-line {
+  width: 100%;
+}
+
+.mail-card-skeleton-line.short {
+  width: 64%;
+}
+
 .mail-card-labels {
   display: flex;
   gap: 6px;
@@ -456,6 +492,16 @@ textarea {
   font-size: 0.73rem;
   font-weight: 600;
   text-transform: lowercase;
+}
+
+@keyframes mail-skeleton {
+  from {
+    background-position: 0 0;
+  }
+
+  to {
+    background-position: 220px 0;
+  }
 }
 
 .list-empty {

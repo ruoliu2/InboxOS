@@ -16,6 +16,7 @@ import {
   ThreadActionName,
   ThreadActionResponse,
   ThreadDetail,
+  ThreadHydrateResponse,
   ThreadSummaryPage,
   MailboxKey,
 } from "@inboxos/types";
@@ -129,6 +130,11 @@ export const api = {
   },
   getGmailThread: (threadId: string) =>
     request<ThreadDetail>(`/gmail/threads/${threadId}`),
+  hydrateGmailThreads: (thread_ids: string[]) =>
+    request<ThreadHydrateResponse>("/gmail/threads/hydrate", {
+      method: "POST",
+      body: JSON.stringify({ thread_ids }),
+    }),
   replyToGmailThread: (
     threadId: string,
     payload: { body: string; mute_thread: boolean },

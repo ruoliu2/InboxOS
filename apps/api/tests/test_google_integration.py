@@ -1,4 +1,5 @@
 import base64
+import json
 import sqlite3
 from datetime import UTC, datetime, timedelta
 
@@ -6,7 +7,11 @@ import httpx
 import pytest
 
 from app.core.config import get_settings
-from app.integrations.google_workspace import GmailOutgoingAttachment, GoogleAPIError
+from app.integrations.google_workspace import (
+    GmailOutgoingAttachment,
+    GmailThreadIdPage,
+    GoogleAPIError,
+)
 from app.routers.gmail import (
     MAX_GMAIL_ATTACHMENT_BYTES,
     MAX_GMAIL_MESSAGE_ATTACHMENTS,
@@ -28,6 +33,8 @@ from app.services.dependencies import (
     get_auth_service,
     get_auth_store,
     get_gmail_mailbox_cache,
+    get_gmail_mailbox_service,
+    get_gmail_mailbox_store,
     get_google_workspace_client,
 )
 from app.storage.auth_store import AuthSessionRecord
@@ -362,11 +369,11 @@ def test_protected_routes_reissue_cookie(client, monkeypatch):
     google_client = get_google_workspace_client()
     monkeypatch.setattr(
         google_client,
-        "list_gmail_threads",
-        lambda access_token, **_: ThreadSummaryPage(
-            threads=[],
+        "list_gmail_thread_ids",
+        lambda access_token, **_: GmailThreadIdPage(
+            thread_ids=[],
             next_page_token=None,
-            has_more=False,
+            total_count=0,
         ),
     )
 
@@ -453,7 +460,7 @@ def test_gmail_route_returns_503_for_disabled_google_service(client, monkeypatch
             app_status_code=503,
         )
 
-    monkeypatch.setattr(google_client, "list_gmail_threads", raise_disabled_error)
+    monkeypatch.setattr(google_client, "list_gmail_thread_ids", raise_disabled_error)
 
     response = client.get("/gmail/threads")
 
@@ -472,22 +479,26 @@ def test_gmail_and_calendar_routes_use_google_client(client, monkeypatch):
     )
 
     google_client = get_google_workspace_client()
+    mailbox_store = get_gmail_mailbox_store()
+    mailbox_store.upsert_thread_summaries(
+        get_auth_store().get_session(session.session_id).active_linked_account_id,
+        [
+            ThreadSummary(
+                id="gmail-thread-1",
+                subject="Launch checklist",
+                snippet="Please confirm the launch checklist.",
+                participants=["founder@gmail.com", "user@gmail.com"],
+                last_message_at=datetime.now(UTC),
+                action_states=[ActionState.TO_REPLY],
+            )
+        ],
+    )
     monkeypatch.setattr(
         google_client,
-        "list_gmail_threads",
-        lambda access_token, **_: ThreadSummaryPage(
-            threads=[
-                ThreadSummary(
-                    id="gmail-thread-1",
-                    subject="Launch checklist",
-                    snippet="Please confirm the launch checklist.",
-                    participants=["founder@gmail.com", "user@gmail.com"],
-                    last_message_at=datetime.now(UTC),
-                    action_states=[ActionState.TO_REPLY],
-                )
-            ],
+        "list_gmail_thread_ids",
+        lambda access_token, **_: GmailThreadIdPage(
+            thread_ids=["gmail-thread-1"],
             next_page_token="next-page",
-            has_more=True,
             total_count=41,
         ),
     )
@@ -554,9 +565,24 @@ def test_gmail_route_returns_cached_first_page_before_refresh(client, monkeypatc
         domain="testserver.local",
     )
 
-    cache = get_gmail_mailbox_cache()
-    cache.store_thread_page(
-        session.account_email,
+    auth_session = get_auth_store().get_session(session.session_id)
+    assert auth_session is not None
+    mailbox_store = get_gmail_mailbox_store()
+    mailbox_store.upsert_thread_summaries(
+        auth_session.active_linked_account_id,
+        [
+            ThreadSummary(
+                id="cached-thread-1",
+                subject="Cached summary",
+                snippet="Cached startup page.",
+                participants=["cached@example.com", session.account_email],
+                last_message_at=datetime.now(UTC),
+                action_states=[ActionState.FYI],
+            )
+        ],
+    )
+    mailbox_store.store_thread_page(
+        auth_session.active_linked_account_id,
         page=ThreadSummaryPage(
             threads=[
                 ThreadSummary(
@@ -571,6 +597,7 @@ def test_gmail_route_returns_cached_first_page_before_refresh(client, monkeypatc
             next_page_token="cached-next",
             has_more=True,
             total_count=17,
+            source="cache",
         ),
         page_key=None,
     )
@@ -588,7 +615,7 @@ def test_gmail_route_returns_cached_first_page_before_refresh(client, monkeypatc
     ) -> ThreadSummaryPage:
         raise RuntimeError("live fetch should not block cached startup")
 
-    monkeypatch.setattr(google_client, "list_gmail_threads", fail_live_fetch)
+    monkeypatch.setattr(google_client, "list_gmail_thread_ids", fail_live_fetch)
 
     response = client.get("/gmail/threads")
 
@@ -610,9 +637,11 @@ def test_gmail_route_returns_cached_empty_first_page_with_total_count(
         domain="testserver.local",
     )
 
-    cache = get_gmail_mailbox_cache()
-    cache.store_thread_page(
-        session.account_email,
+    auth_session = get_auth_store().get_session(session.session_id)
+    assert auth_session is not None
+    mailbox_store = get_gmail_mailbox_store()
+    mailbox_store.store_thread_page(
+        auth_session.active_linked_account_id,
         mailbox_key="inbox",
         unread_only=False,
         page=ThreadSummaryPage(
@@ -620,6 +649,7 @@ def test_gmail_route_returns_cached_empty_first_page_with_total_count(
             next_page_token=None,
             has_more=False,
             total_count=0,
+            source="cache",
         ),
         page_key=None,
     )
@@ -637,7 +667,7 @@ def test_gmail_route_returns_cached_empty_first_page_with_total_count(
     ) -> ThreadSummaryPage:
         raise RuntimeError("live fetch should not block cached startup")
 
-    monkeypatch.setattr(google_client, "list_gmail_threads", fail_live_fetch)
+    monkeypatch.setattr(google_client, "list_gmail_thread_ids", fail_live_fetch)
 
     response = client.get("/gmail/threads")
 
@@ -690,7 +720,7 @@ def test_gmail_route_forwards_pagination_options(client, monkeypatch):
     google_client = get_google_workspace_client()
     captured: dict[str, object] = {}
 
-    def list_threads(
+    def list_thread_ids(
         access_token: str,
         *,
         max_results: int = 20,
@@ -698,19 +728,19 @@ def test_gmail_route_forwards_pagination_options(client, monkeypatch):
         mailbox=None,
         unread_only: bool = False,
         query: str | None = None,
-    ) -> ThreadSummaryPage:
+    ) -> GmailThreadIdPage:
         captured["max_results"] = max_results
         captured["page_token"] = page_token
         captured["mailbox"] = mailbox.value if mailbox is not None else None
         captured["unread_only"] = unread_only
         captured["query"] = query
-        return ThreadSummaryPage(
-            threads=[],
+        return GmailThreadIdPage(
+            thread_ids=[],
             next_page_token=None,
-            has_more=False,
+            total_count=0,
         )
 
-    monkeypatch.setattr(google_client, "list_gmail_threads", list_threads)
+    monkeypatch.setattr(google_client, "list_gmail_thread_ids", list_thread_ids)
 
     response = client.get(
         "/gmail/threads?page_size=10&page_token=cursor-2&q=from:founder"
@@ -739,11 +769,11 @@ def test_gmail_route_forwards_mailbox_and_unread_filters(client, monkeypatch):
     google_client = get_google_workspace_client()
     captured: dict[str, object] = {}
 
-    def list_threads(access_token: str, **kwargs) -> ThreadSummaryPage:
+    def list_thread_ids(access_token: str, **kwargs) -> GmailThreadIdPage:
         captured.update(kwargs)
-        return ThreadSummaryPage(threads=[], next_page_token=None, has_more=False)
+        return GmailThreadIdPage(thread_ids=[], next_page_token=None, total_count=0)
 
-    monkeypatch.setattr(google_client, "list_gmail_threads", list_threads)
+    monkeypatch.setattr(google_client, "list_gmail_thread_ids", list_thread_ids)
 
     response = client.get(
         "/gmail/threads?mailbox=archive&unread_only=true&q=label:team"
@@ -753,6 +783,154 @@ def test_gmail_route_forwards_mailbox_and_unread_filters(client, monkeypatch):
     assert captured["mailbox"].value == "archive"
     assert captured["unread_only"] is True
     assert captured["query"] == "label:team"
+
+
+def test_gmail_threads_route_returns_placeholders_before_hydration(client, monkeypatch):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
+
+    google_client = get_google_workspace_client()
+    monkeypatch.setattr(
+        google_client,
+        "list_gmail_thread_ids",
+        lambda access_token, **_: GmailThreadIdPage(
+            thread_ids=["thread-a", "thread-b"],
+            next_page_token="cursor-2",
+            total_count=12,
+        ),
+    )
+
+    response = client.get("/gmail/threads")
+
+    assert response.status_code == 200
+    assert response.json()["threads"] == [
+        {"state": "placeholder", "id": "thread-a"},
+        {"state": "placeholder", "id": "thread-b"},
+    ]
+    assert response.json()["hydrated_count"] == 0
+
+
+def test_gmail_hydrate_route_fetches_requested_ids_and_preserves_order(
+    client, monkeypatch
+):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
+
+    google_client = get_google_workspace_client()
+    captured: list[str] = []
+
+    def fetch_summaries(
+        access_token: str, thread_ids: list[str]
+    ) -> list[ThreadSummary]:
+        captured.extend(thread_ids)
+        now = datetime.now(UTC)
+        return [
+            ThreadSummary(
+                id=thread_id,
+                subject=f"Subject {thread_id}",
+                snippet=f"Snippet {thread_id}",
+                participants=["founder@gmail.com", "user@gmail.com"],
+                last_message_at=now,
+                action_states=[ActionState.FYI],
+            )
+            for thread_id in thread_ids
+        ]
+
+    monkeypatch.setattr(google_client, "get_gmail_thread_summaries", fetch_summaries)
+
+    response = client.post(
+        "/gmail/threads/hydrate",
+        json={"thread_ids": ["thread-b", "thread-a"]},
+    )
+
+    assert response.status_code == 200
+    assert captured == ["thread-b", "thread-a"]
+    assert list(response.json()["threads"].keys()) == ["thread-b", "thread-a"]
+    assert response.json()["threads"]["thread-b"]["state"] == "ready"
+
+
+def test_gmail_mailbox_counts_route_returns_cached_counts_before_refresh(
+    client, monkeypatch
+):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
+    stored_session = auth_store.get_session(session.session_id)
+    assert stored_session is not None
+
+    get_gmail_mailbox_store().upsert_mailbox_counts(
+        stored_session.active_linked_account_id,
+        MailboxCountsResponse(
+            inbox=88,
+            sent=21,
+            archive=None,
+            trash=3,
+            junk=1,
+        ),
+        synced_at=datetime.now(UTC),
+    )
+
+    google_client = get_google_workspace_client()
+    monkeypatch.setattr(
+        google_client,
+        "get_gmail_mailbox_counts",
+        lambda access_token: (_ for _ in ()).throw(
+            RuntimeError("refresh should not block cached counts")
+        ),
+    )
+
+    response = client.get("/gmail/mailbox-counts")
+
+    assert response.status_code == 200
+    assert response.json()["inbox"] == 88
+    assert response.json()["trash"] == 3
+
+
+def test_gmail_watch_route_forwards_notification_payload(client, monkeypatch):
+    service = get_gmail_mailbox_service()
+    captured: dict[str, str | None] = {}
+
+    monkeypatch.setattr(
+        service,
+        "handle_watch_notification",
+        lambda account_email, history_id: captured.update(
+            {"account_email": account_email, "history_id": history_id}
+        ),
+    )
+
+    encoded = base64.urlsafe_b64encode(
+        json.dumps({"emailAddress": "user@gmail.com", "historyId": "123456789"}).encode(
+            "utf-8"
+        )
+    ).decode("utf-8")
+
+    response = client.post(
+        "/gmail/internal/watch",
+        json={"message": {"data": encoded}},
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "account_email": "user@gmail.com",
+        "history_id": "123456789",
+    }
 
 
 def test_compose_route_updates_detail_cache_and_response(client, monkeypatch):
