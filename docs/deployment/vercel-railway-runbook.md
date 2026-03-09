@@ -17,6 +17,67 @@ git push -u origin gamma
 
 Use `git commit -s -S` for any direct commits or merge-resolution commits made on `gamma` or `main`.
 
+## Exact Gamma Release Workflow
+
+Use this flow when a feature branch is ready for the shared gamma environment and all three providers are already configured against the `gamma` branch.
+
+1. Validate the change locally.
+
+```bash
+cd apps/api
+uv run --group dev python -m pytest
+uv run --group dev python -m ruff check
+
+cd ../web
+bun run build
+```
+
+2. Ensure the feature branch is committed, pushed, and clean.
+
+```bash
+git status --short
+git push origin HEAD
+```
+
+3. Trigger the gamma release from the exact feature-branch commit.
+
+```bash
+make deploy-gamma
+```
+
+That command runs `./scripts/deploy-branch.sh gamma`, fetches `origin/gamma`, verifies that your current `HEAD` is a fast-forward of `gamma`, and pushes the commit to the `gamma` branch. That single branch update is the shared release trigger for:
+
+- Vercel gamma
+- Railway gamma
+- Supabase gamma
+
+4. Verify the deployed gamma environment after the provider webhooks finish.
+
+```bash
+gh run list --branch gamma --limit 5
+curl -fsS https://<gamma-railway-domain>/health
+```
+
+Then open the gamma Vercel URL and confirm:
+
+- the web app loads without build or runtime errors
+- sign-in redirects back to the gamma web domain
+- the gamma web app reaches the gamma Railway API without CORS issues
+- mailbox actions and new mail send successfully against gamma
+
+## Exact Production Promotion Workflow
+
+Use the same release path once the exact gamma commit is approved for production.
+
+1. Merge or fast-forward the approved gamma commit into `main`.
+2. Run:
+
+```bash
+make deploy-main
+```
+
+3. Verify production with the matching Railway health endpoint and Vercel URL.
+
 ## Vercel
 
 - Git provider repo: `ruoliu2/InboxOS`
@@ -33,6 +94,15 @@ Set these environment variables in both projects:
 - `NEXT_PUBLIC_SESSION_COOKIE_NAME=inboxos_session`
 
 Do not set Supabase database credentials or service keys in Vercel for the current architecture.
+
+### Gamma Vercel Verification
+
+After a `gamma` branch push:
+
+1. Open the gamma Vercel deployment for the pushed commit.
+2. Confirm the deployment used `apps/web` as the root directory.
+3. Confirm `NEXT_PUBLIC_API_BASE_URL` points at the gamma Railway domain.
+4. Open the deployed site and validate the critical flows for that release.
 
 ## Railway
 
@@ -79,6 +149,38 @@ Set these environment variables for gamma:
 - `GMAIL_CACHE_DB_PATH=/data/gmail_mailbox_cache.sqlite3` if you keep the volume for cache persistence
 
 If `GOOGLE_REDIRECT_URI` is unset, Railway deployments fall back to `RAILWAY_PUBLIC_DOMAIN` for the callback URL.
+
+### Cross-Origin Session Safety
+
+The current API authenticates browser requests with an HTTP-only session cookie. If you deploy the web app and API on different origins and keep `SESSION_COOKIE_SECURE=true` with cross-origin cookies enabled, you must pair that setup with a CSRF defense before treating it as production-ready for state-changing routes.
+
+For this repo today:
+
+- prefer same-origin deployment for the web app and API when possible
+- otherwise require an origin-bound CSRF token or a custom header validated server-side before enabling cross-origin authenticated writes
+- do not assume CORS alone protects `POST` form submissions from third-party sites
+
+### Gamma Railway Verification
+
+After a `gamma` branch push:
+
+1. Open the gamma Railway service deployment for the same commit.
+2. Confirm the deployment used `apps/api/Dockerfile`.
+3. Check the release logs for successful container startup.
+4. Confirm the public gamma domain returns a healthy response:
+
+```bash
+curl -fsS https://<gamma-railway-domain>/health
+```
+
+5. If the deployment boots but the web app fails, double-check:
+
+- `CORS_ORIGINS`
+- `WEB_BASE_URL`
+- `SESSION_COOKIE_SECURE`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `DATABASE_URL`
 
 ## Supabase
 

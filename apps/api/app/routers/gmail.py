@@ -1,8 +1,27 @@
 from datetime import UTC, datetime
+from mimetypes import guess_type
+from typing import Annotated
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
+from pydantic import ValidationError
 
-from app.integrations.google_workspace import GoogleAPIError, GoogleWorkspaceClient
+from app.core.config import get_settings
+from app.integrations.google_workspace import (
+    GmailOutgoingAttachment,
+    GoogleAPIError,
+    GoogleWorkspaceClient,
+)
 from app.schemas.thread import (
     ComposeThreadRequest,
     ComposeThreadResponse,
@@ -10,6 +29,8 @@ from app.schemas.thread import (
     MailboxKey,
     ReplyToThreadRequest,
     ReplyToThreadResponse,
+    SendGmailMessageRequest,
+    SendGmailMessageResponse,
     ThreadActionRequest,
     ThreadActionResponse,
     ThreadDetail,
@@ -31,6 +52,11 @@ from app.storage.conversation_store import (
 from app.storage.mailbox_cache import GmailMailboxCache
 
 router = APIRouter()
+
+MAX_GMAIL_MESSAGE_ATTACHMENTS = 10
+MAX_GMAIL_ATTACHMENT_BYTES = 10 * 1024 * 1024
+MAX_GMAIL_TOTAL_ATTACHMENT_BYTES = 20 * 1024 * 1024
+ATTACHMENT_READ_CHUNK_BYTES = 1024 * 1024
 
 
 def refresh_gmail_thread_page_cache(
@@ -70,6 +96,54 @@ def require_active_google_account(session: AuthSessionRecord) -> tuple[str, str]
             detail="An active linked Google account is required.",
         )
     return session.account_email, session.access_token
+
+
+def request_origin(value: str | None) -> str | None:
+    if not value:
+        return None
+    parsed = urlparse(value.strip())
+    if not parsed.scheme or not parsed.netloc:
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+
+
+def allowed_write_origins() -> set[str]:
+    settings = get_settings()
+    origins = {
+        origin
+        for origin in (
+            request_origin(settings.web_base_url),
+            *(
+                request_origin(item)
+                for item in settings.cors_origins.split(",")
+                if item.strip()
+            ),
+        )
+        if origin is not None
+    }
+    return origins
+
+
+def require_trusted_write_request(request: Request) -> None:
+    settings = get_settings()
+    if not settings.session_cookie_secure:
+        return
+    origin = request_origin(request.headers.get("origin"))
+    referer_origin = request_origin(request.headers.get("referer"))
+    candidate = origin or referer_origin
+    if candidate is None or candidate not in allowed_write_origins():
+        raise HTTPException(
+            status_code=403,
+            detail="Cross-site write request rejected.",
+        )
+
+
+def close_uploads(uploads: list[UploadFile]) -> None:
+    for upload in uploads:
+        try:
+            upload.file.close()
+        except Exception:
+            continue
 
 
 def persist_threads(
@@ -301,6 +375,149 @@ def compose_gmail_thread(
         thread=result.thread,
         sent_message=result.sent_message,
         mode=payload.mode,
+    )
+
+
+def normalize_media_type(value: str | None) -> str:
+    return (value or "").partition(";")[0].strip().lower()
+
+
+@router.post("/messages/send", response_model=SendGmailMessageResponse)
+def send_gmail_message(
+    request: Request,
+    to: Annotated[list[str], Form()],
+    subject: Annotated[str, Form()],
+    body: Annotated[str, Form()] = "",
+    attachments: Annotated[list[UploadFile] | None, File()] = None,
+    session: AuthSessionRecord = Depends(get_current_auth_session),
+    client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
+    cache: GmailMailboxCache = Depends(get_gmail_mailbox_cache),
+    conversation_store: ConversationStore = Depends(get_conversation_store),
+) -> SendGmailMessageResponse:
+    account_email, access_token = require_active_google_account(session)
+    require_trusted_write_request(request)
+    try:
+        payload = SendGmailMessageRequest.model_validate(
+            {
+                "to": to,
+                "subject": subject,
+                "body": body,
+            }
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+
+    outgoing_attachments: list[GmailOutgoingAttachment] = []
+    total_attachment_bytes = 0
+    uploaded_attachments = attachments or []
+    try:
+        if len(uploaded_attachments) > MAX_GMAIL_MESSAGE_ATTACHMENTS:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"You can attach up to {MAX_GMAIL_MESSAGE_ATTACHMENTS} images per message."
+                ),
+            )
+        for index, upload in enumerate(uploaded_attachments, start=1):
+            content_type = normalize_media_type(
+                upload.content_type or guess_type(upload.filename or "")[0]
+            )
+            if not content_type.startswith("image/"):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"{upload.filename or 'Attachment'} must be an image file.",
+                )
+            chunks: list[bytes] = []
+            file_size = 0
+            while True:
+                remaining_file_bytes = MAX_GMAIL_ATTACHMENT_BYTES - file_size
+                remaining_total_bytes = (
+                    MAX_GMAIL_TOTAL_ATTACHMENT_BYTES
+                    - total_attachment_bytes
+                    - file_size
+                )
+                if remaining_file_bytes <= 0:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=(
+                            f"{upload.filename or 'Attachment'} exceeds the "
+                            "10 MiB attachment limit."
+                        ),
+                    )
+                if remaining_total_bytes <= 0:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Attachments exceed the 20 MiB total size limit.",
+                    )
+                max_read_bytes = min(
+                    ATTACHMENT_READ_CHUNK_BYTES,
+                    remaining_file_bytes,
+                    remaining_total_bytes,
+                )
+                chunk = upload.file.read(max_read_bytes + 1)
+                if not chunk:
+                    break
+                file_size += len(chunk)
+                if file_size > MAX_GMAIL_ATTACHMENT_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=(
+                            f"{upload.filename or 'Attachment'} exceeds the "
+                            "10 MiB attachment limit."
+                        ),
+                    )
+                if (
+                    total_attachment_bytes + file_size
+                    > MAX_GMAIL_TOTAL_ATTACHMENT_BYTES
+                ):
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Attachments exceed the 20 MiB total size limit.",
+                    )
+                chunks.append(chunk)
+
+            data = b"".join(chunks)
+            if not data:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"{upload.filename or 'Attachment'} is empty.",
+                )
+
+            total_attachment_bytes += file_size
+            subtype = content_type.partition("/")[2] or "png"
+            outgoing_attachments.append(
+                GmailOutgoingAttachment(
+                    filename=upload.filename or f"image-{index}.{subtype}",
+                    content_type=content_type,
+                    data=data,
+                )
+            )
+    finally:
+        close_uploads(uploaded_attachments)
+
+    try:
+        result = client.send_gmail_message(
+            access_token,
+            account_email=account_email,
+            payload=payload,
+            attachments=outgoing_attachments,
+        )
+    except GoogleAPIError as exc:
+        raise HTTPException(status_code=exc.app_status_code, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    cache.invalidate_account_pages(account_email)
+    cache.upsert_thread_detail(account_email, result.thread)
+    persist_threads(
+        session,
+        conversation_store,
+        [result.thread],
+        source_folder=None,
+    )
+    return SendGmailMessageResponse(
+        thread=result.thread,
+        sent_message=result.sent_message,
     )
 
 

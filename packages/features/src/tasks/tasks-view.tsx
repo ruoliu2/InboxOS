@@ -5,6 +5,9 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@inboxos/lib/api";
 import { formatDate } from "@inboxos/lib/format";
 import { TaskItem } from "@inboxos/types";
+import { Button } from "@inboxos/ui/button";
+import { Input } from "@inboxos/ui/input";
+import { cn } from "@inboxos/ui/utils";
 
 type StatusFilter = "all" | "open" | "completed";
 
@@ -181,64 +184,86 @@ export function TasksView() {
   const completeCount = tasks.filter(
     (task) => task.status === "completed",
   ).length;
+  const surfaceClassName =
+    "rounded-[12px] border border-[var(--line)] bg-white shadow-[var(--shadow)]";
 
   return (
-    <main className="tasks-layout">
-      <section className="panel-surface tasks-hero">
+    <main className="grid h-full min-h-0 gap-4">
+      <section
+        className={cn(
+          surfaceClassName,
+          "grid gap-4 p-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start",
+        )}
+      >
         <div>
-          <h1>Tasks</h1>
-          <p>Task workflow with filters, pagination, and completion actions.</p>
+          <h1 className="m-0 text-[1.55rem] font-semibold text-[var(--text)]">
+            Tasks
+          </h1>
+          <p className="mt-2 text-[0.92rem] text-[var(--muted)]">
+            Task workflow with filters, pagination, and completion actions.
+          </p>
         </div>
-        <div className="task-kpis">
-          <div>
-            <strong>{openCount}</strong>
-            <span>Open</span>
-          </div>
-          <div>
-            <strong>{completeCount}</strong>
-            <span>Completed</span>
-          </div>
-          <div>
-            <strong>{tasks.length}</strong>
-            <span>Total</span>
-          </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {[
+            { label: "Open", value: openCount },
+            { label: "Completed", value: completeCount },
+            { label: "Total", value: tasks.length },
+          ].map((item) => (
+            <div
+              key={item.label}
+              className="min-w-[120px] rounded-[14px] border border-[var(--line)] bg-[#fafafa] px-4 py-3"
+            >
+              <strong className="block text-[1.15rem] text-[var(--text)]">
+                {item.value}
+              </strong>
+              <span className="mt-1 block text-[0.78rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+                {item.label}
+              </span>
+            </div>
+          ))}
         </div>
       </section>
 
-      <section className="panel-surface task-create">
-        <h2>Create Task</h2>
-        <form className="task-create-form" onSubmit={createTask}>
-          <input
+      <section className={cn(surfaceClassName, "grid gap-4 p-6")}>
+        <div>
+          <h2 className="m-0 text-[1.05rem] font-semibold text-[var(--text)]">
+            Create Task
+          </h2>
+          <p className="mt-1 text-[0.86rem] text-[var(--muted)]">
+            Add a task manually when it does not come from a mail thread.
+          </p>
+        </div>
+        <form
+          className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_180px_auto]"
+          onSubmit={createTask}
+        >
+          <Input
             value={newTitle}
             onChange={(event) => setNewTitle(event.target.value)}
             placeholder="Task title"
             aria-label="Task title"
           />
-          <input
+          <Input
             value={newCategory}
             onChange={(event) => setNewCategory(event.target.value)}
             placeholder="Category (optional)"
             aria-label="Task category"
           />
-          <input
+          <Input
             type="date"
             value={newDueAt}
             onChange={(event) => setNewDueAt(event.target.value)}
             aria-label="Due date"
           />
-          <button
-            className="btn btn-primary"
-            type="submit"
-            disabled={submitting}
-          >
+          <Button type="submit" disabled={submitting}>
             {submitting ? "Creating..." : "Create"}
-          </button>
+          </Button>
         </form>
       </section>
 
-      <section className="panel-surface tasks-table-wrap">
-        <div className="tasks-toolbar">
-          <input
+      <section className={cn(surfaceClassName, "grid min-h-0 gap-4 p-6")}>
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_220px_220px]">
+          <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Filter tasks..."
@@ -246,6 +271,7 @@ export function TasksView() {
           />
 
           <select
+            className="h-10 rounded-md border border-[var(--line)] bg-white px-3 text-sm text-[var(--text)] outline-none"
             value={statusFilter}
             onChange={(event) =>
               setStatusFilter(event.target.value as StatusFilter)
@@ -258,6 +284,7 @@ export function TasksView() {
           </select>
 
           <select
+            className="h-10 rounded-md border border-[var(--line)] bg-white px-3 text-sm text-[var(--text)] outline-none"
             value={categoryFilter}
             onChange={(event) => setCategoryFilter(event.target.value)}
             aria-label="Filter by category"
@@ -270,28 +297,43 @@ export function TasksView() {
           </select>
         </div>
 
-        {error ? <p className="status error">{error}</p> : null}
-        {message ? <p className="status">{message}</p> : null}
-        {loading ? <p className="muted">Loading tasks...</p> : null}
+        {error ? (
+          <p className="m-0 rounded-[12px] border border-[#fecdd3] bg-[#fff1f2] px-4 py-3 text-[0.83rem] text-[#be123c]">
+            {error}
+          </p>
+        ) : null}
+        {message ? (
+          <p className="m-0 rounded-[12px] border border-[#bbf7d0] bg-[#ecfdf3] px-4 py-3 text-[0.83rem] text-[#166534]">
+            {message}
+          </p>
+        ) : null}
+        {loading ? (
+          <p className="m-0 text-[0.86rem] text-[var(--muted)]">
+            Loading tasks...
+          </p>
+        ) : null}
 
         {!loading ? (
-          <div className="table-shell">
-            <table className="tasks-table">
-              <thead>
+          <div className="min-h-0 overflow-auto rounded-[14px] border border-[var(--line)]">
+            <table className="w-full min-w-[760px] border-collapse text-left text-[0.86rem]">
+              <thead className="bg-[#fafafa] text-[0.73rem] uppercase tracking-[0.08em] text-[var(--muted)]">
                 <tr>
-                  <th>ID</th>
-                  <th>Title</th>
-                  <th>Status</th>
-                  <th>Priority</th>
-                  <th>Category</th>
-                  <th>Due</th>
-                  <th>Actions</th>
+                  <th className="px-4 py-3 font-medium">ID</th>
+                  <th className="px-4 py-3 font-medium">Title</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Priority</th>
+                  <th className="px-4 py-3 font-medium">Category</th>
+                  <th className="px-4 py-3 font-medium">Due</th>
+                  <th className="px-4 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {pagedTasks.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="empty-cell">
+                    <td
+                      colSpan={7}
+                      className="px-4 py-10 text-center text-[0.88rem] text-[var(--muted)]"
+                    >
                       No tasks in this view.
                     </td>
                   </tr>
@@ -299,34 +341,63 @@ export function TasksView() {
                   pagedTasks.map((task) => {
                     const priority = derivePriority(task);
                     return (
-                      <tr key={task.id}>
-                        <td>{task.id}</td>
-                        <td className="task-title-cell">{task.title}</td>
-                        <td>
-                          <span className={`pill status-${task.status}`}>
+                      <tr
+                        key={task.id}
+                        className="border-t border-[var(--line)] align-middle"
+                      >
+                        <td className="px-4 py-3 font-mono text-[0.75rem] text-[var(--muted)]">
+                          {task.id}
+                        </td>
+                        <td className="px-4 py-3 font-medium text-[var(--text)]">
+                          {task.title}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={cn(
+                              "inline-flex rounded-full px-2.5 py-1 text-[0.73rem] font-medium capitalize",
+                              task.status === "open"
+                                ? "bg-[#eff6ff] text-[#1d4ed8]"
+                                : "bg-[#ecfdf3] text-[#166534]",
+                            )}
+                          >
                             {task.status}
                           </span>
                         </td>
-                        <td>
-                          <span className={`pill priority-${priority}`}>
+                        <td className="px-4 py-3">
+                          <span
+                            className={cn(
+                              "inline-flex rounded-full px-2.5 py-1 text-[0.73rem] font-medium capitalize",
+                              priority === "high"
+                                ? "bg-[#fff1f2] text-[#be123c]"
+                                : priority === "medium"
+                                  ? "bg-[#fef3c7] text-[#b45309]"
+                                  : "bg-[#f4f4f5] text-[#52525b]",
+                            )}
+                          >
                             {priority}
                           </span>
                         </td>
-                        <td>{task.category ?? "general"}</td>
-                        <td>{formatDate(task.due_at)}</td>
-                        <td>
+                        <td className="px-4 py-3 text-[var(--text)]">
+                          {task.category ?? "general"}
+                        </td>
+                        <td className="px-4 py-3 text-[var(--text)]">
+                          {formatDate(task.due_at)}
+                        </td>
+                        <td className="px-4 py-3">
                           {task.status === "open" ? (
-                            <button
-                              className="btn"
+                            <Button
+                              variant="outline"
                               onClick={() => completeTask(task.id)}
                               disabled={completingTaskId === task.id}
                             >
                               {completingTaskId === task.id
                                 ? "Completing..."
                                 : "Complete"}
-                            </button>
+                            </Button>
                           ) : (
-                            <span className="muted">Completed</span>
+                            <span className="text-[0.82rem] text-[var(--muted)]">
+                              Completed
+                            </span>
                           )}
                         </td>
                       </tr>
@@ -338,41 +409,41 @@ export function TasksView() {
           </div>
         ) : null}
 
-        <div className="tasks-pagination">
-          <p>
+        <div className="flex flex-col justify-between gap-3 text-[0.84rem] text-[var(--muted)] sm:flex-row sm:items-center">
+          <p className="m-0">
             Page {Math.min(pageIndex + 1, totalPages)} of {totalPages}
           </p>
-          <div>
-            <button
-              className="btn"
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
               onClick={() => setPageIndex(0)}
               disabled={pageIndex === 0}
             >
               First
-            </button>
-            <button
-              className="btn"
+            </Button>
+            <Button
+              variant="outline"
               onClick={() => setPageIndex((value) => Math.max(0, value - 1))}
               disabled={pageIndex === 0}
             >
               Previous
-            </button>
-            <button
-              className="btn"
+            </Button>
+            <Button
+              variant="outline"
               onClick={() =>
                 setPageIndex((value) => Math.min(totalPages - 1, value + 1))
               }
               disabled={pageIndex >= totalPages - 1}
             >
               Next
-            </button>
-            <button
-              className="btn"
+            </Button>
+            <Button
+              variant="outline"
               onClick={() => setPageIndex(totalPages - 1)}
               disabled={pageIndex >= totalPages - 1}
             >
               Last
-            </button>
+            </Button>
           </div>
         </div>
       </section>

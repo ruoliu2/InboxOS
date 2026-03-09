@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -82,50 +86,6 @@ a {
   overflow: hidden;
 }
 
-.app-rail {
-  border-right: 1px solid var(--line);
-  background: #f1f3f7;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 5px;
-}
-
-.rail-brand {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  font-size: 0.66rem;
-  font-weight: 700;
-  color: #fff;
-  background: #1d4ed8;
-}
-
-.rail-nav {
-  display: grid;
-  gap: 6px;
-}
-
-.rail-link {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  border: 1px solid transparent;
-  display: grid;
-  place-items: center;
-  color: #475569;
-}
-
-.rail-link:hover,
-.rail-link.active {
-  background: #ffffff;
-  border-color: #d7deea;
-  color: #111827;
-}
-
 .panel-surface {
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -161,16 +121,6 @@ button:hover {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
-}
-
-.btn-primary {
-  background: var(--blue);
-  color: #fff;
-  border-color: var(--blue);
-}
-
-.btn-primary:hover {
-  background: #1d4ed8;
 }
 
 input,
@@ -758,224 +708,8 @@ textarea {
   color: #b91c1c;
 }
 
-.overlay-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-  background: rgba(15, 23, 42, 0.38);
-  display: grid;
-  place-items: center;
-  padding: 20px;
-}
-
-.overlay-card {
-  width: min(520px, 100%);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #fff;
-  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18);
-  padding: 16px;
-  display: grid;
-  gap: 14px;
-}
-
-.overlay-copy h2 {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.overlay-copy p {
-  margin: 4px 0 0;
-  color: var(--muted);
-}
-
-.overlay-actions {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 8px;
-}
-
-.btn-danger {
-  border-color: #b91c1c;
-  background: #b91c1c;
-  color: #fff;
-}
-
-.btn-danger:hover {
-  background: #991b1b;
-}
-
-.tasks-layout {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  gap: 12px;
-  overflow: hidden;
-}
-
-.tasks-hero,
-.task-create,
-.tasks-table-wrap,
 .calendar-shell {
   padding: 14px;
-}
-
-.tasks-hero {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-}
-
-.tasks-hero h1 {
-  margin: 0;
-}
-
-.tasks-hero p {
-  margin: 4px 0 0;
-  color: var(--muted);
-}
-
-.task-kpis {
-  display: flex;
-  gap: 8px;
-}
-
-.task-kpis > div {
-  border: 1px solid #d1d5db;
-  border-radius: 10px;
-  background: #fff;
-  min-width: 82px;
-  padding: 8px;
-  text-align: center;
-}
-
-.task-kpis strong {
-  display: block;
-  font-size: 1.25rem;
-}
-
-.task-kpis span {
-  color: var(--muted);
-  font-size: 0.78rem;
-}
-
-.task-create h2 {
-  margin: 0 0 8px;
-}
-
-.task-create-form {
-  display: grid;
-  grid-template-columns: 1.4fr 1fr auto auto;
-  gap: 8px;
-}
-
-.tasks-table-wrap {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.tasks-toolbar {
-  display: grid;
-  grid-template-columns: 1.5fr auto auto;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.table-shell {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-}
-
-.tasks-table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 780px;
-}
-
-.tasks-table th,
-.tasks-table td {
-  padding: 10px;
-  text-align: left;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.tasks-table thead th {
-  background: #f8fafc;
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.tasks-table tbody tr:hover {
-  background: #fafafa;
-}
-
-.task-title-cell {
-  max-width: 420px;
-}
-
-.pill {
-  display: inline-flex;
-  border-radius: 999px;
-  padding: 3px 8px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.status-open {
-  background: #e0ecff;
-  color: #1d4ed8;
-}
-
-.status-completed {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.priority-high {
-  background: #ffe4e6;
-  color: #be123c;
-}
-
-.priority-medium {
-  background: #ffedd5;
-  color: #9a3412;
-}
-
-.priority-low {
-  background: #ecfccb;
-  color: #3f6212;
-}
-
-.empty-cell {
-  text-align: center;
-  color: var(--muted);
-  padding: 18px !important;
-}
-
-.tasks-pagination {
-  margin-top: 10px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-
-.tasks-pagination p {
-  margin: 0;
-  color: var(--muted);
-}
-
-.tasks-pagination > div {
-  display: flex;
-  gap: 6px;
 }
 
 .calendar-shell {
@@ -1524,166 +1258,6 @@ textarea {
   white-space: nowrap;
 }
 
-.calendar-modal {
-  width: min(560px, 100%);
-}
-
-.calendar-form {
-  display: grid;
-  gap: 10px;
-}
-
-.calendar-form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.calendar-checkbox {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.82rem;
-  color: #3f3f46;
-}
-
-.calendar-checkbox input {
-  width: 16px;
-  height: 16px;
-}
-
-.calendar-event-detail {
-  display: grid;
-  gap: 10px;
-}
-
-.calendar-event-detail p {
-  margin: 0;
-  color: #3f3f46;
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.calendar-event-detail a {
-  color: #1d4ed8;
-  font-weight: 500;
-}
-
-.auth-layout {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  overflow: hidden;
-}
-
-.auth-left {
-  background: linear-gradient(150deg, #0f172a 0%, #10223d 45%, #123766 100%);
-  color: #e8efff;
-  padding: 28px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-
-.auth-left h1 {
-  margin: 0;
-  font-size: 2rem;
-}
-
-.auth-left p {
-  margin: 8px 0 0;
-  color: #c7d6f3;
-  max-width: 460px;
-}
-
-.auth-feature-list {
-  display: grid;
-  gap: 6px;
-}
-
-.auth-feature-list p {
-  margin: 0;
-  font-size: 0.84rem;
-  color: #dce9ff;
-}
-
-.auth-left blockquote {
-  margin: 0;
-  max-width: 500px;
-}
-
-.auth-left blockquote p {
-  margin: 0;
-  color: #eaf2ff;
-  line-height: 1.5;
-}
-
-.auth-left footer {
-  margin-top: 10px;
-  color: #a8bce0;
-}
-
-.auth-right {
-  padding: 28px;
-  display: grid;
-  place-items: center;
-  background: #f8fbff;
-  overflow: auto;
-}
-
-.auth-card {
-  width: min(420px, 100%);
-  border: 1px solid #dbe4f4;
-  border-radius: 14px;
-  background: #fff;
-  padding: 18px;
-  display: grid;
-  gap: 12px;
-}
-
-.auth-card h2 {
-  margin: 0;
-}
-
-.auth-card p {
-  margin: 0;
-  color: var(--muted);
-}
-
-.auth-actions {
-  display: grid;
-  gap: 8px;
-}
-
-.auth-google-btn {
-  min-height: 40px;
-}
-
-.auth-form {
-  display: grid;
-  gap: 8px;
-}
-
-.auth-form label {
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-.auth-divider {
-  text-align: center;
-  color: var(--muted);
-  font-size: 0.84rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.auth-url {
-  display: block;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
 @media (max-width: 1200px) {
   .mail-shell {
     grid-template-columns: 212px 322px minmax(0, 1fr);
@@ -1705,10 +1279,6 @@ textarea {
   .calendar-day {
     min-height: 68px;
   }
-
-  .task-create-form {
-    grid-template-columns: 1fr 1fr;
-  }
 }
 
 @media (max-width: 960px) {
@@ -1727,30 +1297,14 @@ textarea {
     overflow: visible;
   }
 
-  .app-rail {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-    flex-direction: row;
-    justify-content: flex-start;
-    padding: 8px;
-  }
-
-  .rail-nav {
-    grid-auto-flow: column;
-    display: grid;
-    gap: 8px;
-  }
-
   .mail-shell,
-  .calendar-shell,
-  .auth-layout {
+  .calendar-shell {
     height: auto;
     min-height: auto;
   }
 
   .mail-shell,
-  .calendar-shell,
-  .auth-layout {
+  .calendar-shell {
     grid-template-columns: 1fr;
   }
 
@@ -1773,27 +1327,7 @@ textarea {
   .mail-card-list,
   .mail-left-nav,
   .mail-read-pane,
-  .calendar-agenda,
-  .auth-right {
+  .calendar-agenda {
     overflow: visible;
-  }
-
-  .tasks-layout {
-    overflow: visible;
-  }
-
-  .tasks-hero {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .task-create-form,
-  .tasks-toolbar {
-    grid-template-columns: 1fr;
-  }
-
-  .tasks-pagination {
-    flex-direction: column;
-    align-items: flex-start;
   }
 }

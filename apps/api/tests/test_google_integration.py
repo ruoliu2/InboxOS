@@ -6,13 +6,18 @@ import httpx
 import pytest
 
 from app.core.config import get_settings
-from app.integrations.google_workspace import GoogleAPIError
+from app.integrations.google_workspace import GmailOutgoingAttachment, GoogleAPIError
+from app.routers.gmail import (
+    MAX_GMAIL_ATTACHMENT_BYTES,
+    MAX_GMAIL_MESSAGE_ATTACHMENTS,
+)
 from app.schemas.calendar import CalendarEvent
 from app.schemas.common import ActionState
 from app.schemas.thread import (
     ComposeMode,
     ComposeThreadRequest,
     MailboxCountsResponse,
+    SendGmailMessageRequest,
     ThreadDetail,
     ThreadInlineAsset,
     ThreadMessage,
@@ -806,6 +811,357 @@ def test_compose_route_updates_detail_cache_and_response(client, monkeypatch):
     assert cached_thread.subject == "Reply trail"
 
 
+def test_reply_route_updates_detail_cache_and_response(client, monkeypatch):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
+
+    google_client = get_google_workspace_client()
+    captured: dict[str, object] = {}
+    thread = ThreadDetail(
+        id="gmail-thread-3",
+        subject="Reply trail",
+        snippet="Latest reply",
+        participants=["founder@gmail.com", "user@gmail.com"],
+        last_message_at=datetime.now(UTC),
+        action_states=[ActionState.FYI],
+        messages=[
+            ThreadMessage(
+                id="gmail-message-3",
+                sender="user@gmail.com",
+                sent_at=datetime.now(UTC),
+                body="Latest reply",
+            )
+        ],
+        analysis=None,
+    )
+
+    def compose_thread(access_token, **kwargs):
+        captured["payload"] = kwargs["payload"]
+        return type(
+            "ComposeResult",
+            (),
+            {
+                "thread": thread,
+                "sent_message": thread.messages[-1],
+            },
+        )()
+
+    monkeypatch.setattr(google_client, "compose_gmail_thread", compose_thread)
+
+    response = client.post(
+        "/gmail/threads/gmail-thread-3/reply",
+        json={"body": "Sending from the dedicated reply route.", "mute_thread": False},
+    )
+
+    assert response.status_code == 200
+    assert captured["payload"].mode == ComposeMode.REPLY
+    assert captured["payload"].body == "Sending from the dedicated reply route."
+    cached_thread = get_gmail_mailbox_cache().get_thread_detail(
+        session.account_email,
+        "gmail-thread-3",
+    )
+    assert cached_thread is not None
+    assert cached_thread.subject == "Reply trail"
+
+
+def test_send_message_route_accepts_multipart_and_updates_cache(client, monkeypatch):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
+
+    google_client = get_google_workspace_client()
+    captured: dict[str, object] = {}
+    thread = ThreadDetail(
+        id="gmail-thread-new",
+        subject="Fresh hello",
+        snippet="Nice to meet you",
+        participants=["friend@example.com", "user@gmail.com"],
+        last_message_at=datetime.now(UTC),
+        action_states=[ActionState.FYI],
+        messages=[
+            ThreadMessage(
+                id="gmail-message-new",
+                sender="user@gmail.com",
+                sent_at=datetime.now(UTC),
+                body="Nice to meet you",
+            )
+        ],
+        analysis=None,
+    )
+
+    def send_message(access_token, **kwargs):
+        captured["payload"] = kwargs["payload"]
+        captured["attachments"] = kwargs["attachments"]
+        return type(
+            "ComposeResult",
+            (),
+            {
+                "thread": thread,
+                "sent_message": thread.messages[-1],
+            },
+        )()
+
+    monkeypatch.setattr(google_client, "send_gmail_message", send_message)
+
+    response = client.post(
+        "/gmail/messages/send",
+        data={
+            "to": "friend@example.com",
+            "subject": "Fresh hello",
+            "body": "Nice to meet you",
+        },
+        files=[
+            (
+                "attachments",
+                ("hello.png", b"png-bytes", "image/png"),
+            )
+        ],
+    )
+
+    assert response.status_code == 200
+    assert captured["payload"] == SendGmailMessageRequest(
+        to=["friend@example.com"],
+        subject="Fresh hello",
+        body="Nice to meet you",
+    )
+    assert len(captured["attachments"]) == 1
+    assert captured["attachments"][0].filename == "hello.png"
+    assert captured["attachments"][0].content_type == "image/png"
+    assert captured["attachments"][0].data == b"png-bytes"
+    cached_thread = get_gmail_mailbox_cache().get_thread_detail(
+        session.account_email,
+        "gmail-thread-new",
+    )
+    assert cached_thread is not None
+    assert cached_thread.subject == "Fresh hello"
+
+
+def test_send_message_route_normalizes_attachment_media_type(client, monkeypatch):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
+
+    google_client = get_google_workspace_client()
+    captured: dict[str, object] = {}
+    thread = ThreadDetail(
+        id="gmail-thread-new",
+        subject="Fresh hello",
+        snippet="Nice to meet you",
+        participants=["friend@example.com", "user@gmail.com"],
+        last_message_at=datetime.now(UTC),
+        action_states=[ActionState.FYI],
+        messages=[
+            ThreadMessage(
+                id="gmail-message-new",
+                sender="user@gmail.com",
+                sent_at=datetime.now(UTC),
+                body="Nice to meet you",
+            )
+        ],
+        analysis=None,
+    )
+
+    def send_message(access_token, **kwargs):
+        captured["attachments"] = kwargs["attachments"]
+        return type(
+            "ComposeResult",
+            (),
+            {
+                "thread": thread,
+                "sent_message": thread.messages[-1],
+            },
+        )()
+
+    monkeypatch.setattr(google_client, "send_gmail_message", send_message)
+
+    response = client.post(
+        "/gmail/messages/send",
+        data={
+            "to": "friend@example.com",
+            "subject": "Fresh hello",
+        },
+        files=[
+            (
+                "attachments",
+                ("hello.png", b"png-bytes", "image/png; charset=binary"),
+            )
+        ],
+    )
+
+    assert response.status_code == 200
+    assert len(captured["attachments"]) == 1
+    assert captured["attachments"][0].content_type == "image/png"
+
+
+def test_send_message_route_rejects_oversized_attachments(client, monkeypatch):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
+
+    google_client = get_google_workspace_client()
+    monkeypatch.setattr(
+        google_client,
+        "send_gmail_message",
+        lambda access_token, **kwargs: pytest.fail("should not send"),
+    )
+
+    response = client.post(
+        "/gmail/messages/send",
+        data={
+            "to": "friend@example.com",
+            "subject": "Fresh hello",
+        },
+        files=[
+            (
+                "attachments",
+                (
+                    "too-large.png",
+                    b"x" * (MAX_GMAIL_ATTACHMENT_BYTES + 1),
+                    "image/png",
+                ),
+            )
+        ],
+    )
+
+    assert response.status_code == 413
+    assert "10 MiB attachment limit" in response.json()["detail"]
+
+
+def test_send_message_route_rejects_too_many_attachments(client, monkeypatch):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
+
+    google_client = get_google_workspace_client()
+    monkeypatch.setattr(
+        google_client,
+        "send_gmail_message",
+        lambda access_token, **kwargs: pytest.fail("should not send"),
+    )
+
+    response = client.post(
+        "/gmail/messages/send",
+        data={
+            "to": "friend@example.com",
+            "subject": "Fresh hello",
+        },
+        files=[
+            ("attachments", (f"hello-{index}.png", b"x", "image/png"))
+            for index in range(MAX_GMAIL_MESSAGE_ATTACHMENTS + 1)
+        ],
+    )
+
+    assert response.status_code == 413
+    assert str(MAX_GMAIL_MESSAGE_ATTACHMENTS) in response.json()["detail"]
+
+
+def test_send_message_route_rejects_excess_total_attachment_size(
+    client,
+    monkeypatch,
+):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
+
+    google_client = get_google_workspace_client()
+    monkeypatch.setattr(
+        google_client,
+        "send_gmail_message",
+        lambda access_token, **kwargs: pytest.fail("should not send"),
+    )
+
+    chunk = 7 * 1024 * 1024
+    response = client.post(
+        "/gmail/messages/send",
+        data={
+            "to": "friend@example.com",
+            "subject": "Fresh hello",
+        },
+        files=[
+            ("attachments", ("hello-1.png", b"x" * chunk, "image/png")),
+            ("attachments", ("hello-2.png", b"x" * chunk, "image/png")),
+            ("attachments", ("hello-3.png", b"x" * chunk, "image/png")),
+        ],
+    )
+
+    assert response.status_code == 413
+    assert "20 MiB total size limit" in response.json()["detail"]
+
+
+def test_send_message_route_rejects_cross_site_write_when_secure_cookie_enabled(
+    client,
+    monkeypatch,
+):
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "true")
+    monkeypatch.setenv("CORS_ORIGINS", "https://app.example.com")
+    monkeypatch.setenv("WEB_BASE_URL", "https://app.example.com")
+    restart_auth_dependencies()
+    try:
+        auth_store = get_auth_store()
+        session = build_session()
+        auth_store.upsert_session(session)
+        client.cookies.set(
+            get_settings().session_cookie_name,
+            session.session_id,
+            domain="testserver.local",
+        )
+
+        google_client = get_google_workspace_client()
+        monkeypatch.setattr(
+            google_client,
+            "send_gmail_message",
+            lambda access_token, **kwargs: pytest.fail("should not send"),
+        )
+
+        response = client.post(
+            "/gmail/messages/send",
+            headers={"origin": "https://evil.example.com"},
+            data={
+                "to": "friend@example.com",
+                "subject": "Fresh hello",
+            },
+        )
+
+        assert response.status_code == 403
+        assert "Cross-site write request rejected." in response.json()["detail"]
+    finally:
+        monkeypatch.delenv("SESSION_COOKIE_SECURE", raising=False)
+        monkeypatch.delenv("CORS_ORIGINS", raising=False)
+        monkeypatch.delenv("WEB_BASE_URL", raising=False)
+        restart_auth_dependencies()
+
+
 def test_thread_action_route_invalidates_cached_pages(client, monkeypatch):
     auth_store = get_auth_store()
     session = build_session()
@@ -985,6 +1341,133 @@ def test_gmail_reply_includes_from_header(monkeypatch):
     mime_message = base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8")
     assert "From: user@gmail.com" in mime_message
     assert "To: founder@example.com" in mime_message
+
+
+def test_gmail_send_message_includes_subject_and_image_attachment(monkeypatch):
+    google_client = get_google_workspace_client()
+    sent_payload: dict[str, object] = {}
+    sent_thread = ThreadDetail(
+        id="thread-new",
+        subject="Fresh hello",
+        snippet="Nice to meet you",
+        participants=["friend@example.com", "user@gmail.com"],
+        last_message_at=datetime.now(UTC),
+        action_states=[ActionState.FYI],
+        messages=[
+            ThreadMessage(
+                id="message-sent",
+                sender="user@gmail.com",
+                sent_at=datetime.now(UTC),
+                body="Nice to meet you",
+            )
+        ],
+        analysis=None,
+    )
+
+    def capture_request(method: str, url: str, **kwargs):
+        sent_payload["method"] = method
+        sent_payload["url"] = url
+        sent_payload["json"] = kwargs["json"]
+        return {"id": "gmail-api-message-id", "threadId": "thread-new"}
+
+    monkeypatch.setattr(google_client, "_request", capture_request)
+    monkeypatch.setattr(
+        google_client,
+        "get_gmail_thread",
+        lambda access_token, thread_id: sent_thread,
+    )
+
+    result = google_client.send_gmail_message(
+        "access-token",
+        account_email="user@gmail.com",
+        payload=SendGmailMessageRequest(
+            to=["friend@example.com"],
+            subject="Fresh hello",
+            body="Nice to meet you",
+        ),
+        attachments=[
+            GmailOutgoingAttachment(
+                filename="hello.png",
+                content_type="image/png",
+                data=b"\x89PNG\r\n",
+            )
+        ],
+    )
+
+    assert result.thread == sent_thread
+    assert result.sent_message == sent_thread.messages[-1]
+    assert sent_payload["method"] == "POST"
+    raw = sent_payload["json"]["raw"]
+    padded = raw + "=" * (-len(raw) % 4)
+    mime_message = base64.urlsafe_b64decode(padded.encode("utf-8")).decode(
+        "utf-8",
+        errors="replace",
+    )
+    assert "From: user@gmail.com" in mime_message
+    assert "To: friend@example.com" in mime_message
+    assert "Subject: Fresh hello" in mime_message
+    assert "Content-Type: multipart/mixed;" in mime_message
+    assert "Content-Type: image/png" in mime_message
+    assert 'filename="hello.png"' in mime_message
+
+
+def test_gmail_send_message_normalizes_attachment_media_type(monkeypatch):
+    google_client = get_google_workspace_client()
+    sent_payload: dict[str, object] = {}
+    sent_thread = ThreadDetail(
+        id="thread-new",
+        subject="Fresh hello",
+        snippet="Nice to meet you",
+        participants=["friend@example.com", "user@gmail.com"],
+        last_message_at=datetime.now(UTC),
+        action_states=[ActionState.FYI],
+        messages=[
+            ThreadMessage(
+                id="message-sent",
+                sender="user@gmail.com",
+                sent_at=datetime.now(UTC),
+                body="Nice to meet you",
+            )
+        ],
+        analysis=None,
+    )
+
+    def capture_request(method: str, url: str, **kwargs):
+        sent_payload["json"] = kwargs["json"]
+        return {"id": "gmail-api-message-id", "threadId": "thread-new"}
+
+    monkeypatch.setattr(google_client, "_request", capture_request)
+    monkeypatch.setattr(
+        google_client,
+        "get_gmail_thread",
+        lambda access_token, thread_id: sent_thread,
+    )
+
+    google_client.send_gmail_message(
+        "access-token",
+        account_email="user@gmail.com",
+        payload=SendGmailMessageRequest(
+            to=["friend@example.com"],
+            subject="Fresh hello",
+            body="Nice to meet you",
+        ),
+        attachments=[
+            GmailOutgoingAttachment(
+                filename="hello.png",
+                content_type="image/png; charset=binary",
+                data=b"\x89PNG\r\n",
+            )
+        ],
+    )
+
+    raw = sent_payload["json"]["raw"]
+    padded = raw + "=" * (-len(raw) % 4)
+    mime_message = base64.urlsafe_b64decode(padded.encode("utf-8")).decode(
+        "utf-8",
+        errors="replace",
+    )
+    assert "Content-Type: image/png" in mime_message
+    assert "charset=binary" not in mime_message
 
 
 def test_google_client_converts_html_breaks_to_newlines():

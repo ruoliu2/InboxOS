@@ -10,6 +10,8 @@ import {
   CreateTaskRequest,
   MailboxCounts,
   ReplyToThreadResponse,
+  SendGmailMessageRequest,
+  SendGmailMessageResponse,
   TaskItem,
   ThreadActionName,
   ThreadActionResponse,
@@ -17,6 +19,10 @@ import {
   ThreadSummaryPage,
   MailboxKey,
 } from "@inboxos/types";
+
+export type SendGmailMessageInput = SendGmailMessageRequest & {
+  attachments?: unknown[];
+};
 
 async function readErrorMessage(response: Response): Promise<string> {
   const body = await response.text();
@@ -37,11 +43,15 @@ async function readErrorMessage(response: Response): Promise<string> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const isFormData =
+    typeof FormData !== "undefined" && init?.body instanceof FormData;
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     credentials: "include",
     headers: {
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...(!init?.body || isFormData
+        ? {}
+        : { "Content-Type": "application/json" }),
       ...(init?.headers ?? {}),
     },
     cache: "no-store",
@@ -132,6 +142,22 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  sendGmailMessage: (payload: SendGmailMessageInput) => {
+    const formData = new FormData();
+    for (const recipient of payload.to) {
+      formData.append("to", recipient);
+    }
+    formData.append("subject", payload.subject);
+    formData.append("body", payload.body);
+    for (const attachment of payload.attachments ?? []) {
+      formData.append("attachments", attachment as never);
+    }
+
+    return request<SendGmailMessageResponse>("/gmail/messages/send", {
+      method: "POST",
+      body: formData,
+    });
+  },
   actOnGmailThread: (threadId: string, action: ThreadActionName) =>
     request<ThreadActionResponse>(`/gmail/threads/${threadId}/action`, {
       method: "POST",

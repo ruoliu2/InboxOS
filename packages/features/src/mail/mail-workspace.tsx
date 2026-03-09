@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Archive,
   ArchiveX,
@@ -11,6 +18,7 @@ import {
   LogOut,
   Mailbox,
   MoreVertical,
+  PenSquare,
   Reply,
   ReplyAll,
   Search,
@@ -31,10 +39,15 @@ import {
   ThreadMessage,
   ThreadSummary,
 } from "@inboxos/types";
+import { Button } from "@inboxos/ui/button";
 import { ConfirmDialog } from "@inboxos/ui/confirm-dialog";
 import { OverflowMenu } from "@inboxos/ui/overflow-menu";
 
 import { EmailHtmlPreview } from "./email-html-preview";
+import {
+  NewMessageAttachment,
+  NewMessageComposer,
+} from "./new-message-composer";
 
 type ListTab = "all" | "unread";
 
@@ -83,6 +96,21 @@ function counterpartyEmailFromThread(
   thread: ThreadSummary | ThreadDetail,
   accountEmail?: string | null,
 ): string {
+  const preferredRecipient = preferredComposeRecipientFromThread(
+    thread,
+    accountEmail,
+  );
+  if (preferredRecipient) {
+    return preferredRecipient;
+  }
+
+  return "unknown@example.com";
+}
+
+function preferredComposeRecipientFromThread(
+  thread: ThreadSummary | ThreadDetail,
+  accountEmail?: string | null,
+): string {
   const currentAccount = normalizedEmail(accountEmail);
   const otherParticipant = thread.participants.find((value) => {
     const participant = normalizedEmail(value);
@@ -92,7 +120,7 @@ function counterpartyEmailFromThread(
   return (
     otherParticipant ??
     thread.participants.find((value) => normalizedEmail(value) !== null) ??
-    "unknown@example.com"
+    ""
   );
 }
 
@@ -193,13 +221,19 @@ function mergeThreadSummaries(
 
 function parseRecipients(value: string): string[] {
   return value
-    .split(",")
+    .split(/[;,]/)
     .map((item) => item.trim())
     .filter(Boolean);
 }
 
 function hasHtmlPreview(message: ThreadMessage): boolean {
   return Boolean(message.body_html?.trim());
+}
+
+function revokeAttachmentPreviews(attachments: NewMessageAttachment[]): void {
+  for (const attachment of attachments) {
+    URL.revokeObjectURL(attachment.previewUrl);
+  }
 }
 
 export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
@@ -236,10 +270,22 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   const [hasMore, setHasMore] = useState(false);
   const [confirmState, setConfirmState] = useState<ConfirmState>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [newMessageOpen, setNewMessageOpen] = useState(false);
+  const [newMessageTo, setNewMessageTo] = useState("");
+  const [newMessageSubject, setNewMessageSubject] = useState("");
+  const [newMessageBody, setNewMessageBody] = useState("");
+  const [newMessageAttachments, setNewMessageAttachments] = useState<
+    NewMessageAttachment[]
+  >([]);
+  const [sendingNewMessage, setSendingNewMessage] = useState(false);
+  const [newMessageMinimized, setNewMessageMinimized] = useState(false);
+  const [newMessageMaximized, setNewMessageMaximized] = useState(false);
+  const [scheduleMenuOpen, setScheduleMenuOpen] = useState(false);
   const threadRequestIdRef = useRef(0);
   const listScrollerRef = useRef<HTMLDivElement | null>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const newMessageAttachmentsRef = useRef<NewMessageAttachment[]>([]);
 
   const unreadOnly = listTab === "unread";
   const activeHeading = mailboxHeading(mailbox);
@@ -328,6 +374,30 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     session?.authenticated,
     unreadOnly,
   ]);
+
+  const clearNewMessageComposer = useCallback(() => {
+    setNewMessageOpen(false);
+    setNewMessageMinimized(false);
+    setNewMessageMaximized(false);
+    setScheduleMenuOpen(false);
+    setNewMessageTo("");
+    setNewMessageSubject("");
+    setNewMessageBody("");
+    setNewMessageAttachments((current) => {
+      revokeAttachmentPreviews(current);
+      return [];
+    });
+  }, []);
+
+  useEffect(() => {
+    newMessageAttachmentsRef.current = newMessageAttachments;
+  }, [newMessageAttachments]);
+
+  useEffect(() => {
+    return () => {
+      revokeAttachmentPreviews(newMessageAttachmentsRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -473,6 +543,10 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     session?.account_email ??
     session?.user?.primary_email ??
     "Google account";
+  const canSendNewMessage =
+    parseRecipients(newMessageTo).length > 0 &&
+    Boolean(newMessageSubject.trim()) &&
+    !sendingNewMessage;
 
   function focusComposer(mode: ComposeMode) {
     setComposeMode(mode);
@@ -480,6 +554,74 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     setError(null);
     window.requestAnimationFrame(() => {
       composerRef.current?.focus();
+    });
+  }
+
+  function openNewMessageComposer() {
+    clearNewMessageComposer();
+    setNewMessageTo(
+      activeThread
+        ? preferredComposeRecipientFromThread(
+            activeThread,
+            session?.account_email,
+          )
+        : "",
+    );
+    setNotice(null);
+    setError(null);
+    setNewMessageOpen(true);
+  }
+
+  function closeNewMessageComposer() {
+    if (sendingNewMessage) {
+      return;
+    }
+    clearNewMessageComposer();
+  }
+
+  function toggleNewMessageMinimized() {
+    setScheduleMenuOpen(false);
+    setNewMessageMaximized(false);
+    setNewMessageMinimized((current) => !current);
+  }
+
+  function toggleNewMessageMaximized() {
+    setScheduleMenuOpen(false);
+    setNewMessageMaximized((current) => !current);
+    setNewMessageMinimized(false);
+  }
+
+  function handleNewMessageAttachments(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    if (files.length === 0) {
+      return;
+    }
+
+    const validFiles = files.filter((file) => file.type.startsWith("image/"));
+    if (validFiles.length !== files.length) {
+      setError(
+        "Only image attachments are supported in the new message composer.",
+      );
+    }
+
+    setNewMessageAttachments((current) => [
+      ...current,
+      ...validFiles.map((file, index) => ({
+        id: `${file.name}-${file.lastModified}-${current.length + index}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+      })),
+    ]);
+    event.target.value = "";
+  }
+
+  function removeNewMessageAttachment(attachmentId: string) {
+    setNewMessageAttachments((current) => {
+      const attachment = current.find((item) => item.id === attachmentId);
+      if (attachment) {
+        URL.revokeObjectURL(attachment.previewUrl);
+      }
+      return current.filter((item) => item.id !== attachmentId);
     });
   }
 
@@ -613,6 +755,36 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
       setError((composeError as Error).message);
     } finally {
       setSendingCompose(false);
+    }
+  }
+
+  async function sendNewMessage() {
+    const recipients = parseRecipients(newMessageTo);
+    if (recipients.length === 0 || !newMessageSubject.trim()) {
+      return;
+    }
+
+    setSendingNewMessage(true);
+    setNotice(null);
+    setError(null);
+
+    try {
+      await api.sendGmailMessage({
+        to: recipients,
+        subject: newMessageSubject.trim(),
+        body: newMessageBody,
+        attachments: newMessageAttachments.map((attachment) => attachment.file),
+      });
+      await Promise.all([
+        loadMailboxCounts(),
+        mailbox === "sent" ? loadInitialThreads() : Promise.resolve(),
+      ]);
+      clearNewMessageComposer();
+      setNotice("New email sent through Gmail.");
+    } catch (sendError) {
+      setError((sendError as Error).message);
+    } finally {
+      setSendingNewMessage(false);
     }
   }
 
@@ -779,6 +951,13 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
 
         <section className="mail-read-pane">
           <div className="read-toolbar">
+            <button
+              type="button"
+              aria-label="Compose new email"
+              onClick={openNewMessageComposer}
+            >
+              <PenSquare size={15} />
+            </button>
             <button
               type="button"
               aria-label="Archive"
@@ -1009,6 +1188,40 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
           if (confirmState) {
             void runThreadAction(confirmState.action);
           }
+        }}
+      />
+
+      <NewMessageComposer
+        open={newMessageOpen}
+        sending={sendingNewMessage}
+        minimized={newMessageMinimized}
+        maximized={newMessageMaximized}
+        scheduleMenuOpen={scheduleMenuOpen}
+        to={newMessageTo}
+        subject={newMessageSubject}
+        body={newMessageBody}
+        attachments={newMessageAttachments}
+        accountLabel={accountLabel}
+        accountEmail={session?.account_email}
+        canSend={canSendNewMessage}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeNewMessageComposer();
+          }
+        }}
+        onToggleMinimized={toggleNewMessageMinimized}
+        onToggleMaximized={toggleNewMessageMaximized}
+        onScheduleMenuOpenChange={setScheduleMenuOpen}
+        onToChange={setNewMessageTo}
+        onSubjectChange={setNewMessageSubject}
+        onBodyChange={setNewMessageBody}
+        onAttachmentsChange={handleNewMessageAttachments}
+        onRemoveAttachment={removeNewMessageAttachment}
+        onSend={() => {
+          void sendNewMessage();
+        }}
+        onScheduleAtEight={() => {
+          setNotice("Send at 8:00 am is not available in gamma yet.");
         }}
       />
     </>

@@ -16,6 +16,13 @@ InboxOS is a mail-first AI workspace with one shared UI direction across the liv
 - `docs`: product and technical documentation
 - `ui`: local ignored checkout of upstream `shadcn/ui` for reference only
 
+## UI Standard
+
+- use Tailwind utilities for new component styling
+- use Radix primitives for layered and interactive behavior
+- keep shared wrappers in `packages/ui`
+- keep `apps/web/app/globals.css` for tokens and layout, not new feature-specific components
+
 ## Architecture
 
 ```mermaid
@@ -74,10 +81,12 @@ Local app state now defaults to Supabase Postgres at `127.0.0.1:54322`. Reset th
 ### Web
 
 ```bash
-cd apps/web
 bun install
+cd apps/web
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 bun run dev
 ```
+
+Run `bun install` from the repo root. The web app and Docker image both use the root Bun workspace lockfile.
 
 Open [http://localhost:3000/mail](http://localhost:3000/mail).
 
@@ -145,6 +154,17 @@ Deploys are branch-driven:
 
 - `main` auto deploys the production environment on Vercel, Railway, and Supabase
 - `gamma` auto deploys the gamma environment on Vercel, Railway, and Supabase
+
+### One Command Trigger
+
+Once Vercel, Railway, and Supabase are already bound to the release branches, use:
+
+```bash
+make deploy-gamma
+make deploy-main
+```
+
+Each target pushes the current clean, fast-forwardable commit to the matching release branch through `scripts/deploy-branch.sh`. That single branch update is the shared deployment trigger for the web app, API, and Supabase release flow.
 
 ### Web on Vercel
 

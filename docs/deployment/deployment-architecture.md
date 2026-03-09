@@ -94,10 +94,12 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ### Frontend
 
 ```bash
-cd apps/web
 bun install
+cd apps/web
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 bun run dev
 ```
+
+Run `bun install` from the repo root so local development matches the Docker workspace install.
 
 ### Full Stack With Docker
 
@@ -106,6 +108,22 @@ docker compose up --build
 ```
 
 `docker-compose.yml` is local-only. It starts the web app, API, and a Compose-managed Postgres instance seeded from `supabase/migrations`. It does not affect Railway or Vercel deployment settings.
+
+## One Command Release Trigger
+
+Runtime deployments stay branch-driven:
+
+- push or update `gamma` to trigger the gamma Railway, Vercel, and Supabase environments
+- push or update `main` to trigger production
+
+Use the repo release wrapper when the provider integrations are already configured:
+
+```bash
+make deploy-gamma
+make deploy-main
+```
+
+Those targets call `scripts/deploy-branch.sh`, verify a clean working tree, require a fast-forward release, and then push the exact commit to the target branch as the single deployment trigger.
 
 ## Constraints
 
