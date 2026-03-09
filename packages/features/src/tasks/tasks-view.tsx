@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
-import { api } from "@inboxos/lib/api";
+import { ApiError, api } from "@inboxos/lib/api";
 import { formatDate } from "@inboxos/lib/format";
 import { TaskItem } from "@inboxos/types";
 import { Button } from "@inboxos/ui/button";
@@ -52,6 +52,14 @@ export function TasksView() {
   const [submitting, setSubmitting] = useState(false);
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
 
+  const handleAuthError = useCallback((error: unknown): boolean => {
+    if (error instanceof ApiError && error.status === 401) {
+      window.location.href = "/auth";
+      return true;
+    }
+    return false;
+  }, []);
+
   const loadTasks = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -59,12 +67,15 @@ export function TasksView() {
       const data = await api.getTasks();
       setTasks(data);
     } catch (loadError) {
+      if (handleAuthError(loadError)) {
+        return;
+      }
       setTasks([]);
       setError((loadError as Error).message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [handleAuthError]);
 
   useEffect(() => {
     void loadTasks();
@@ -159,6 +170,9 @@ export function TasksView() {
       setNewDueAt("");
       setMessage("Task created.");
     } catch (createError) {
+      if (handleAuthError(createError)) {
+        return;
+      }
       setError((createError as Error).message);
     } finally {
       setSubmitting(false);
@@ -174,6 +188,9 @@ export function TasksView() {
       await loadTasks();
       setMessage("Task marked complete.");
     } catch (completeError) {
+      if (handleAuthError(completeError)) {
+        return;
+      }
       setError((completeError as Error).message);
     } finally {
       setCompletingTaskId(null);

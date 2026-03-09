@@ -9,7 +9,7 @@ import {
   MapPin,
 } from "lucide-react";
 
-import { api } from "@inboxos/lib/api";
+import { ApiError, api } from "@inboxos/lib/api";
 import {
   AuthSessionResponse,
   CalendarEvent as ApiCalendarEvent,
@@ -259,10 +259,17 @@ export function CalendarWorkspace() {
         window.location.href = "/auth";
         return;
       }
-
       setSession(nextSession);
       setEvents(nextEvents.map(normalizeEvent));
     } catch (loadError) {
+      if (
+        loadError instanceof ApiError &&
+        loadError.status === 401 &&
+        typeof window !== "undefined"
+      ) {
+        window.location.href = "/auth";
+        return;
+      }
       setError((loadError as Error).message);
       setEvents([]);
     } finally {

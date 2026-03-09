@@ -186,6 +186,7 @@ Each target pushes the current clean, fast-forwardable commit to the matching re
 - set `DATABASE_URL` to the matching Supabase Postgres connection string for each environment
 - set `CREDENTIAL_ENCRYPTION_KEY` in Railway for each environment
 - set env vars from `.env.example` plus environment-specific overrides for `APP_ENV`, `SESSION_COOKIE_SECURE`, `CORS_ORIGINS`, and `WEB_BASE_URL`
+- if the web app stays on Vercel and the API stays on Railway, treat the session cookie as API-origin state; do not build Next server redirects or server prefetch around Vercel-side cookie reads
 - keep the `/data` volume only if `GMAIL_CACHE_DB_PATH` should survive container replacement
 - optionally put `GMAIL_CACHE_DB_PATH` on persistent storage if mailbox cache should survive container replacement
 - `GOOGLE_REDIRECT_URI` is optional on Railway when `RAILWAY_PUBLIC_DOMAIN` is available, but can still be set explicitly

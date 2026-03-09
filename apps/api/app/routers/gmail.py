@@ -43,6 +43,7 @@ from app.schemas.thread import (
     ThreadSummaryPage,
 )
 from app.services.dependencies import (
+    get_auth_store,
     get_conversation_store,
     get_current_auth_session,
     get_gmail_mailbox_cache,
@@ -51,7 +52,7 @@ from app.services.dependencies import (
     get_google_workspace_client,
 )
 from app.services.gmail_mailbox_service import GmailMailboxService
-from app.storage.auth_store import AuthSessionRecord
+from app.storage.auth_store import AuthSessionRecord, AuthStore
 from app.storage.conversation_store import (
     ConversationStore,
     build_insight_record,
@@ -68,13 +69,33 @@ MAX_GMAIL_TOTAL_ATTACHMENT_BYTES = 20 * 1024 * 1024
 ATTACHMENT_READ_CHUNK_BYTES = 1024 * 1024
 
 
-def require_active_google_account(session: AuthSessionRecord) -> tuple[str, str]:
-    if not session.account_email or not session.access_token:
+def require_active_google_account(
+    session: AuthSessionRecord,
+    auth_store: AuthStore,
+) -> tuple[str, str]:
+    if not session.access_token:
         raise HTTPException(
             status_code=401,
             detail="An active linked Google account is required.",
         )
-    return session.account_email, session.access_token
+
+    account_email = session.account_email
+    if not account_email and session.active_linked_account_id:
+        linked_account = auth_store.get_linked_account_by_id(
+            session.active_linked_account_id
+        )
+        if linked_account is not None and linked_account.user_id == session.user_id:
+            account_email = linked_account.provider_account_ref
+            if not account_email and "@" in (linked_account.provider_account_id or ""):
+                account_email = linked_account.provider_account_id
+
+    if not account_email:
+        raise HTTPException(
+            status_code=401,
+            detail="An active linked Google account is required.",
+        )
+
+    return account_email, session.access_token
 
 
 def runtime_error_to_http_exception(exc: RuntimeError) -> HTTPException:
@@ -311,12 +332,13 @@ def get_gmail_mailbox_counts(
 def get_gmail_thread(
     thread_id: str,
     session: AuthSessionRecord = Depends(get_current_auth_session),
+    auth_store: AuthStore = Depends(get_auth_store),
     client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
     cache: GmailMailboxCache = Depends(get_gmail_mailbox_cache),
     mailbox_store: GmailMailboxStore = Depends(get_gmail_mailbox_store),
     conversation_store: ConversationStore = Depends(get_conversation_store),
 ) -> ThreadDetail:
-    account_email, access_token = require_active_google_account(session)
+    account_email, access_token = require_active_google_account(session, auth_store)
     try:
         thread = client.get_gmail_thread(access_token, thread_id)
     except GoogleAPIError as exc:
@@ -344,12 +366,13 @@ def reply_to_gmail_thread(
     thread_id: str,
     payload: ReplyToThreadRequest,
     session: AuthSessionRecord = Depends(get_current_auth_session),
+    auth_store: AuthStore = Depends(get_auth_store),
     client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
     cache: GmailMailboxCache = Depends(get_gmail_mailbox_cache),
     mailbox_store: GmailMailboxStore = Depends(get_gmail_mailbox_store),
     conversation_store: ConversationStore = Depends(get_conversation_store),
 ) -> ReplyToThreadResponse:
-    account_email, access_token = require_active_google_account(session)
+    account_email, access_token = require_active_google_account(session, auth_store)
     try:
         result = client.compose_gmail_thread(
             access_token,
@@ -388,12 +411,13 @@ def compose_gmail_thread(
     thread_id: str,
     payload: ComposeThreadRequest,
     session: AuthSessionRecord = Depends(get_current_auth_session),
+    auth_store: AuthStore = Depends(get_auth_store),
     client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
     cache: GmailMailboxCache = Depends(get_gmail_mailbox_cache),
     mailbox_store: GmailMailboxStore = Depends(get_gmail_mailbox_store),
     conversation_store: ConversationStore = Depends(get_conversation_store),
 ) -> ComposeThreadResponse:
-    account_email, access_token = require_active_google_account(session)
+    account_email, access_token = require_active_google_account(session, auth_store)
     try:
         result = client.compose_gmail_thread(
             access_token,
@@ -439,11 +463,12 @@ def send_gmail_message(
     body: Annotated[str, Form()] = "",
     attachments: Annotated[list[UploadFile] | None, File()] = None,
     session: AuthSessionRecord = Depends(get_current_auth_session),
+    auth_store: AuthStore = Depends(get_auth_store),
     client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
     cache: GmailMailboxCache = Depends(get_gmail_mailbox_cache),
     conversation_store: ConversationStore = Depends(get_conversation_store),
 ) -> SendGmailMessageResponse:
-    account_email, access_token = require_active_google_account(session)
+    account_email, access_token = require_active_google_account(session, auth_store)
     require_trusted_write_request(request)
     try:
         payload = SendGmailMessageRequest.model_validate(
@@ -575,12 +600,13 @@ def act_on_gmail_thread(
     thread_id: str,
     payload: ThreadActionRequest,
     session: AuthSessionRecord = Depends(get_current_auth_session),
+    auth_store: AuthStore = Depends(get_auth_store),
     client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
     cache: GmailMailboxCache = Depends(get_gmail_mailbox_cache),
     mailbox_store: GmailMailboxStore = Depends(get_gmail_mailbox_store),
     conversation_store: ConversationStore = Depends(get_conversation_store),
 ) -> ThreadActionResponse:
-    account_email, access_token = require_active_google_account(session)
+    account_email, access_token = require_active_google_account(session, auth_store)
     try:
         result = client.apply_gmail_thread_action(
             access_token,

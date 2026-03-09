@@ -159,6 +159,7 @@ For this repo today:
 - prefer same-origin deployment for the web app and API when possible
 - otherwise require an origin-bound CSRF token or a custom header validated server-side before enabling cross-origin authenticated writes
 - do not assume CORS alone protects `POST` form submissions from third-party sites
+- when Vercel serves the web app and Railway serves the API on a different origin, the Next server on Vercel does not receive the Railway session cookie; keep auth enforcement and bootstrap on the browser-to-API path rather than Vercel route guards or server prefetch
 
 ### Gamma Railway Verification
 

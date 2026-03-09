@@ -47,6 +47,18 @@ function escapeHtmlAttribute(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
 
+function hasExplicitFontStyling(document: Document): boolean {
+  if (
+    document.querySelector('[face], [style*="font-family"], [style*="font:"]')
+  ) {
+    return true;
+  }
+
+  return Array.from(document.querySelectorAll("style")).some((element) =>
+    /font-family\s*:/i.test(element.textContent ?? ""),
+  );
+}
+
 function sanitizeHtmlDocument(resolvedHtml: string): string {
   const parser = new DOMParser();
   const document = parser.parseFromString(resolvedHtml, "text/html");
@@ -87,9 +99,12 @@ function sanitizeHtmlDocument(resolvedHtml: string): string {
     }
   });
 
+  const defaultBodyFont = hasExplicitFontStyling(document)
+    ? ""
+    : ' font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;';
   const previewStyles = [
     "html, body { margin: 0; padding: 0; background: transparent; }",
-    "body { color: #111827; overflow-wrap: anywhere; }",
+    `body { color: #111827; overflow-wrap: anywhere; font-size: 13px; line-height: 1.45;${defaultBodyFont} }`,
     "img, video { max-width: 100%; height: auto; }",
     "table { max-width: 100%; }",
     "pre { white-space: pre-wrap; }",
