@@ -109,6 +109,13 @@ a {
   gap: 6px;
 }
 
+.rail-footer {
+  margin-top: auto;
+  width: 100%;
+  display: grid;
+  place-items: center;
+}
+
 .rail-link {
   width: 32px;
   height: 32px;
@@ -124,6 +131,30 @@ a {
   background: #ffffff;
   border-color: #d7deea;
   color: #111827;
+}
+
+.rail-profile-link {
+  overflow: hidden;
+  padding: 0;
+}
+
+.rail-avatar-image,
+.rail-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.rail-avatar-image {
+  object-fit: cover;
+}
+
+.rail-avatar-fallback {
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: #dbe6f4;
+  color: #1f2937;
 }
 
 .panel-surface {
@@ -236,33 +267,32 @@ textarea {
   overflow: auto;
 }
 
-.mail-account-select {
-  height: 32px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
+.mail-sidebar-heading {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 9px;
-  background: #fff;
-  font-weight: 500;
-  font-size: 0.82rem;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.account-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.mail-sidebar-heading strong {
+  font-size: 0.9rem;
+}
+
+.mail-sidebar-heading span {
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .account-logo {
   display: inline-flex;
 }
 
-.account-caret {
-  margin-left: auto;
-  color: var(--muted);
-  display: inline-flex;
+.mail-scope-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 4px;
+  color: #334155;
+  font-size: 0.78rem;
 }
 
 .mail-folder-group {
@@ -347,6 +377,17 @@ textarea {
   font-size: 1.02rem;
   line-height: 1;
   font-weight: 600;
+}
+
+.list-title-block {
+  display: grid;
+  gap: 4px;
+}
+
+.list-title-block p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
 }
 
 .list-tabs {
@@ -475,6 +516,12 @@ textarea {
   font-weight: 600;
   width: 100%;
   text-align: left;
+}
+
+.mail-card-account {
+  margin: 0;
+  color: #475569;
+  font-size: 0.74rem;
 }
 
 .mail-card-snippet {
@@ -866,7 +913,7 @@ textarea {
 
 .task-create-form {
   display: grid;
-  grid-template-columns: 1.4fr 1fr auto auto;
+  grid-template-columns: 1.1fr 1.4fr 1fr auto auto;
   gap: 8px;
 }
 
@@ -879,7 +926,7 @@ textarea {
 
 .tasks-toolbar {
   display: grid;
-  grid-template-columns: 1.5fr auto auto;
+  grid-template-columns: 1.5fr auto auto auto;
   gap: 8px;
   margin-bottom: 10px;
 }
@@ -997,9 +1044,13 @@ textarea {
 
 .calendar-title-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) 200px auto auto;
   align-items: flex-start;
   gap: 10px;
+}
+
+.calendar-scope-select {
+  min-width: 0;
 }
 
 .calendar-title-copy h1 {
@@ -1684,6 +1735,162 @@ textarea {
   text-overflow: ellipsis;
 }
 
+.settings-layout {
+  display: grid;
+  gap: 12px;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: auto;
+}
+
+.settings-hero,
+.settings-account-panel,
+.settings-routing-panel {
+  padding: 18px;
+}
+
+.settings-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.settings-hero h1,
+.settings-panel-header h2,
+.settings-routing-panel h2 {
+  margin: 0;
+}
+
+.settings-hero p,
+.settings-panel-header p,
+.settings-routing-panel p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  max-width: 680px;
+}
+
+.settings-hero-meta {
+  display: flex;
+  gap: 12px;
+}
+
+.settings-hero-meta > div {
+  min-width: 120px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.settings-hero-meta strong {
+  display: block;
+  font-size: 1.1rem;
+}
+
+.settings-hero-meta span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.settings-panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.settings-account-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.settings-account-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  background: #fbfdff;
+}
+
+.settings-account-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-account-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  object-fit: cover;
+  background: #dbe6f4;
+}
+
+.settings-account-avatar-fallback {
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.settings-account-copy p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.settings-account-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-account-notes {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+  color: #475569;
+  font-size: 0.77rem;
+}
+
+.settings-default-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #e0ecff;
+  color: #1d4ed8;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.settings-account-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.settings-routing-panel {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.settings-routing-list {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-routing-list > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #334155;
+}
+
 @media (max-width: 1200px) {
   .mail-shell {
     grid-template-columns: 212px 322px minmax(0, 1fr);
@@ -1694,7 +1901,7 @@ textarea {
   }
 
   .calendar-title-row {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
   }
 
   .calendar-view-switcher {
@@ -1739,6 +1946,10 @@ textarea {
     grid-auto-flow: column;
     display: grid;
     gap: 8px;
+  }
+
+  .rail-footer {
+    margin-top: 0;
   }
 
   .mail-shell,
@@ -1793,6 +2004,13 @@ textarea {
   }
 
   .tasks-pagination {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .settings-hero,
+  .settings-panel-header,
+  .settings-account-card {
     flex-direction: column;
     align-items: flex-start;
   }

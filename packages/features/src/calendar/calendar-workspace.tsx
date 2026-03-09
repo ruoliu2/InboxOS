@@ -31,6 +31,9 @@ type CalendarEvent = {
   htmlLink: string | null;
   canDelete: boolean;
   tone: EventTone;
+  linkedAccountId: string | null;
+  accountEmail: string | null;
+  accountName: string | null;
 };
 
 type EventFormState = {
@@ -40,6 +43,7 @@ type EventFormState = {
   location: string;
   description: string;
   isAllDay: boolean;
+  linkedAccountId: string;
 };
 
 const calendarViews: ViewMode[] = ["day", "week", "month"];
@@ -168,6 +172,9 @@ function normalizeEvent(event: ApiCalendarEvent): CalendarEvent {
     htmlLink: event.html_link,
     canDelete: event.can_delete,
     tone: toneForEvent(event.id),
+    linkedAccountId: event.linked_account_id ?? null,
+    accountEmail: event.account_email ?? null,
+    accountName: event.account_name ?? null,
   };
 }
 
@@ -209,12 +216,14 @@ function buildDefaultEventForm(selectedDate: Date): EventFormState {
     location: "",
     description: "",
     isAllDay: false,
+    linkedAccountId: "",
   };
 }
 
 export function CalendarWorkspace() {
   const today = useMemo(() => new Date(), []);
   const [session, setSession] = useState<AuthSessionResponse | null>(null);
+  const [selectedScope, setSelectedScope] = useState<string>("all");
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [visibleMonth, setVisibleMonth] = useState<Date>(startOfMonth(today));
   const [selectedDate, setSelectedDate] = useState<Date>(new Date(today));
@@ -230,6 +239,13 @@ export function CalendarWorkspace() {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [deletingEvent, setDeletingEvent] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const linkedAccounts = useMemo(
+    () =>
+      (session?.linked_accounts ?? []).filter(
+        (account) => account.status === "active",
+      ),
+    [session?.linked_accounts],
+  );
 
   const fetchRange = useMemo(() => {
     const monthStart = startOfMonth(visibleMonth);
@@ -249,6 +265,7 @@ export function CalendarWorkspace() {
         api.getCalendarEvents(
           fetchRange.start.toISOString(),
           fetchRange.end.toISOString(),
+          selectedScope,
         ),
       ]);
       if (!nextSession.authenticated) {
@@ -257,6 +274,11 @@ export function CalendarWorkspace() {
       }
 
       setSession(nextSession);
+      setEventForm((current) => ({
+        ...current,
+        linkedAccountId:
+          current.linkedAccountId || nextSession.active_account_id || "",
+      }));
       setEvents(nextEvents.map(normalizeEvent));
     } catch (loadError) {
       setError((loadError as Error).message);
@@ -264,11 +286,20 @@ export function CalendarWorkspace() {
     } finally {
       setLoading(false);
     }
-  }, [fetchRange.end, fetchRange.start]);
+  }, [fetchRange.end, fetchRange.start, selectedScope]);
 
   useEffect(() => {
     void loadEvents();
   }, [loadEvents]);
+
+  useEffect(() => {
+    if (
+      selectedScope !== "all" &&
+      !linkedAccounts.some((account) => account.id === selectedScope)
+    ) {
+      setSelectedScope("all");
+    }
+  }, [linkedAccounts, selectedScope]);
 
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
@@ -447,6 +478,8 @@ export function CalendarWorkspace() {
         title: eventForm.title.trim(),
         starts_at: startsAt.toISOString(),
         ends_at: endsAt.toISOString(),
+        linked_account_id:
+          eventForm.linkedAccountId || session?.active_account_id,
         is_all_day: eventForm.isAllDay,
         location: eventForm.location.trim() || null,
         description: eventForm.description.trim() || null,
@@ -475,7 +508,10 @@ export function CalendarWorkspace() {
     setMessage(null);
 
     try {
-      await api.deleteCalendarEvent(selectedEvent.id);
+      await api.deleteCalendarEvent(
+        selectedEvent.id,
+        selectedEvent.linkedAccountId,
+      );
       setShowDeleteConfirm(false);
       setSelectedEventId(null);
       setMessage("Calendar event deleted.");
@@ -495,10 +531,28 @@ export function CalendarWorkspace() {
             <div className="calendar-title-copy">
               <h1>{formatViewTitle(viewMode, selectedDate, visibleMonth)}</h1>
               <p>
-                {(session?.account_email ?? session?.user?.primary_email)
-                  ? `Primary Google Calendar for ${session?.account_email ?? session?.user?.primary_email}`
-                  : "Primary Google Calendar"}
+                {selectedScope === "all"
+                  ? "All active Google calendars"
+                  : `Calendar for ${
+                      linkedAccounts.find(
+                        (account) => account.id === selectedScope,
+                      )?.provider_account_ref ?? "linked account"
+                    }`}
               </p>
+            </div>
+            <div className="calendar-scope-select">
+              <select
+                value={selectedScope}
+                onChange={(event) => setSelectedScope(event.target.value)}
+                aria-label="Calendar account scope"
+              >
+                <option value="all">All Accounts</option>
+                {linkedAccounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.provider_account_ref ?? account.display_name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div
               className="calendar-view-switcher"
@@ -802,9 +856,25 @@ export function CalendarWorkspace() {
           >
             <div className="overlay-copy">
               <h2>Create event</h2>
-              <p>Add an event to your primary Google Calendar.</p>
+              <p>Add an event to the selected linked Google Calendar.</p>
             </div>
             <form className="calendar-form" onSubmit={submitEvent}>
+              <select
+                value={eventForm.linkedAccountId}
+                onChange={(event) =>
+                  setEventForm((current) => ({
+                    ...current,
+                    linkedAccountId: event.target.value,
+                  }))
+                }
+                aria-label="Calendar account"
+              >
+                {linkedAccounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.provider_account_ref ?? account.display_name}
+                  </option>
+                ))}
+              </select>
               <input
                 value={eventForm.title}
                 onChange={(event) =>
@@ -949,6 +1019,10 @@ export function CalendarWorkspace() {
             </div>
             <div className="calendar-event-detail">
               <p>
+                <Clock3 size={13} />
+                {selectedEvent.accountEmail ?? "Linked calendar"}
+              </p>
+              <p>
                 <MapPin size={13} />
                 {selectedEvent.location}
               </p>
@@ -987,7 +1061,7 @@ export function CalendarWorkspace() {
       <ConfirmDialog
         open={showDeleteConfirm}
         title="Delete this event?"
-        body="This removes the event from your primary Google Calendar."
+        body="This removes the event from the linked Google Calendar that owns it."
         confirmLabel="Delete event"
         busy={deletingEvent}
         onClose={() => setShowDeleteConfirm(false)}

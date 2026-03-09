@@ -13,6 +13,9 @@ class CalendarEvent(BaseModel):
     is_all_day: bool = False
     html_link: str | None = None
     can_delete: bool = False
+    linked_account_id: str | None = None
+    account_email: str | None = None
+    account_name: str | None = None
 
 
 class CreateCalendarEventRequest(BaseModel):
@@ -20,6 +23,7 @@ class CreateCalendarEventRequest(BaseModel):
     starts_at: datetime
     is_all_day: bool = False
     ends_at: datetime
+    linked_account_id: str | None = None
     location: str | None = None
     description: str | None = None
 

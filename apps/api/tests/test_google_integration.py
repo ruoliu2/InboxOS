@@ -526,13 +526,15 @@ def test_gmail_and_calendar_routes_use_google_client(client, monkeypatch):
 
     threads_response = client.get("/gmail/threads")
     assert threads_response.status_code == 200
-    assert threads_response.json()["threads"][0]["id"] == "gmail-thread-1"
+    scoped_thread_id = threads_response.json()["threads"][0]["id"]
+    assert scoped_thread_id != "gmail-thread-1"
+    assert threads_response.json()["threads"][0]["account_email"] == "user@gmail.com"
     assert threads_response.json()["next_page_token"] == "next-page"
     assert threads_response.json()["total_count"] == 41
 
-    thread_response = client.get("/gmail/threads/gmail-thread-1")
+    thread_response = client.get(f"/gmail/threads/{scoped_thread_id}")
     assert thread_response.status_code == 200
-    assert thread_response.json()["id"] == "gmail-thread-1"
+    assert thread_response.json()["id"] == scoped_thread_id
 
     calendar_response = client.get("/calendar/events")
     assert calendar_response.status_code == 200
@@ -588,7 +590,8 @@ def test_gmail_route_returns_cached_first_page_before_refresh(client, monkeypatc
     response = client.get("/gmail/threads")
 
     assert response.status_code == 200
-    assert response.json()["threads"][0]["id"] == "cached-thread-1"
+    assert response.json()["threads"][0]["id"] != "cached-thread-1"
+    assert response.json()["threads"][0]["account_email"] == session.account_email
     assert response.json()["next_page_token"] == "cached-next"
     assert response.json()["total_count"] == 17
 

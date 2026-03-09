@@ -28,6 +28,9 @@ class ThreadSummary(BaseModel):
     participants: list[str]
     last_message_at: datetime
     action_states: list[ActionState]
+    linked_account_id: str | None = None
+    account_email: str | None = None
+    account_name: str | None = None
 
 
 class ThreadSummaryPage(BaseModel):

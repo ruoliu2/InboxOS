@@ -2,7 +2,11 @@ import { Suspense } from "react";
 
 import { AuthView } from "@inboxos/features/auth/auth-view";
 
-export function AuthPage() {
+import { redirectIfAuthenticated } from "./auth-guard";
+
+export async function AuthPage() {
+  await redirectIfAuthenticated();
+
   return (
     <Suspense fallback={null}>
       <AuthView />

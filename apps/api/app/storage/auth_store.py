@@ -138,6 +138,10 @@ class AuthStore(Protocol):
 
     def list_linked_accounts(self, user_id: str) -> list[LinkedAccountRecord]: ...
 
+    def get_provider_credential(
+        self, linked_account_id: str
+    ) -> ProviderCredentialRecord | None: ...
+
     def upsert_provider_credential(
         self, credential: ProviderCredentialRecord
     ) -> None: ...
@@ -155,6 +159,8 @@ class AuthStore(Protocol):
     def get_session(self, session_id: str) -> AuthSessionRecord | None: ...
 
     def delete_session(self, session_id: str) -> None: ...
+
+    def list_sessions_for_user(self, user_id: str) -> list[AuthSessionRecord]: ...
 
     def set_active_account(
         self, session_id: str, user_id: str, linked_account_id: str
@@ -597,6 +603,22 @@ class SQLiteAuthStore(_BaseAuthStore):
             ).fetchall()
         return [self._row_to_linked_account(row) for row in rows]
 
+    def get_provider_credential(
+        self, linked_account_id: str
+    ) -> ProviderCredentialRecord | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT linked_account_id, access_token_encrypted,
+                       refresh_token_encrypted, scope, expires_at,
+                       created_at, updated_at
+                FROM provider_credentials
+                WHERE linked_account_id = ?
+                """,
+                (linked_account_id,),
+            ).fetchone()
+        return self._row_to_provider_credential(row) if row is not None else None
+
     def upsert_provider_credential(self, credential: ProviderCredentialRecord) -> None:
         with self._lock, self._connect() as connection:
             connection.execute(
@@ -714,6 +736,24 @@ class SQLiteAuthStore(_BaseAuthStore):
                 "DELETE FROM app_sessions WHERE session_id = ?", (session_id,)
             )
             connection.commit()
+
+    def list_sessions_for_user(self, user_id: str) -> list[AuthSessionRecord]:
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT s.session_id, s.user_id, s.active_linked_account_id,
+                       s.session_expires_at, s.created_at, s.updated_at,
+                       a.provider, a.provider_account_ref, a.display_name, a.avatar_url,
+                       c.access_token_encrypted, c.refresh_token_encrypted, c.scope,
+                       c.expires_at
+                FROM app_sessions s
+                LEFT JOIN linked_accounts a ON a.id = s.active_linked_account_id
+                LEFT JOIN provider_credentials c ON c.linked_account_id = a.id
+                WHERE s.user_id = ?
+                """,
+                (user_id,),
+            ).fetchall()
+        return [self._row_to_auth_session(row) for row in rows]
 
     def set_active_account(
         self, session_id: str, user_id: str, linked_account_id: str
@@ -909,6 +949,17 @@ class SQLiteAuthStore(_BaseAuthStore):
             requested_scopes=self._load_list(row["requested_scopes_json"]),
             expires_at=self._parse_datetime(row["expires_at"]),
             consumed_at=self._parse_optional_datetime(row["consumed_at"]),
+            created_at=self._parse_datetime(row["created_at"]),
+            updated_at=self._parse_datetime(row["updated_at"]),
+        )
+
+    def _row_to_provider_credential(self, row: sqlite3.Row) -> ProviderCredentialRecord:
+        return ProviderCredentialRecord(
+            linked_account_id=row["linked_account_id"],
+            access_token=self.cipher.decrypt(row["access_token_encrypted"]) or "",
+            refresh_token=self.cipher.decrypt(row["refresh_token_encrypted"]),
+            scope=row["scope"],
+            expires_at=self._parse_optional_datetime(row["expires_at"]),
             created_at=self._parse_datetime(row["created_at"]),
             updated_at=self._parse_datetime(row["updated_at"]),
         )
@@ -1207,6 +1258,24 @@ class PostgresAuthStore(_BaseAuthStore):
                 rows = cursor.fetchall()
         return [self._pg_row_to_linked_account(row) for row in rows]
 
+    def get_provider_credential(
+        self, linked_account_id: str
+    ) -> ProviderCredentialRecord | None:
+        with self._lock, self._connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT linked_account_id, access_token_encrypted,
+                           refresh_token_encrypted, scope, expires_at,
+                           created_at, updated_at
+                    FROM provider_credentials
+                    WHERE linked_account_id = %s
+                    """,
+                    (linked_account_id,),
+                )
+                row = cursor.fetchone()
+        return self._pg_row_to_provider_credential(row) if row is not None else None
+
     def upsert_provider_credential(self, credential: ProviderCredentialRecord) -> None:
         with self._lock, self._connect() as connection:
             with connection.cursor() as cursor:
@@ -1327,6 +1396,26 @@ class PostgresAuthStore(_BaseAuthStore):
                     "DELETE FROM app_sessions WHERE session_id = %s", (session_id,)
                 )
             connection.commit()
+
+    def list_sessions_for_user(self, user_id: str) -> list[AuthSessionRecord]:
+        with self._lock, self._connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT s.session_id, s.user_id, s.active_linked_account_id,
+                           s.session_expires_at, s.created_at, s.updated_at,
+                           a.provider, a.provider_account_ref, a.display_name, a.avatar_url,
+                           c.access_token_encrypted, c.refresh_token_encrypted, c.scope,
+                           c.expires_at
+                    FROM app_sessions s
+                    LEFT JOIN linked_accounts a ON a.id = s.active_linked_account_id
+                    LEFT JOIN provider_credentials c ON c.linked_account_id = a.id
+                    WHERE s.user_id = %s
+                    """,
+                    (user_id,),
+                )
+                rows = cursor.fetchall()
+        return [self._pg_row_to_auth_session(row) for row in rows]
 
     def set_active_account(
         self, session_id: str, user_id: str, linked_account_id: str
@@ -1508,6 +1597,19 @@ class PostgresAuthStore(_BaseAuthStore):
             requested_scopes=self._load_list(row["requested_scopes_json"]),
             expires_at=self._parse_datetime(row["expires_at"]),
             consumed_at=self._parse_optional_datetime(row["consumed_at"]),
+            created_at=self._parse_datetime(row["created_at"]),
+            updated_at=self._parse_datetime(row["updated_at"]),
+        )
+
+    def _pg_row_to_provider_credential(
+        self, row: dict[str, Any]
+    ) -> ProviderCredentialRecord:
+        return ProviderCredentialRecord(
+            linked_account_id=str(row["linked_account_id"]),
+            access_token=self.cipher.decrypt(row["access_token_encrypted"]) or "",
+            refresh_token=self.cipher.decrypt(row["refresh_token_encrypted"]),
+            scope=row["scope"],
+            expires_at=self._parse_optional_datetime(row["expires_at"]),
             created_at=self._parse_datetime(row["created_at"]),
             updated_at=self._parse_datetime(row["updated_at"]),
         )

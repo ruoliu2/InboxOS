@@ -1,6 +1,7 @@
 export type ActionState = "to_reply" | "to_follow_up" | "task" | "fyi";
 export type TaskStatus = "open" | "completed";
 export type MailboxKey = "inbox" | "sent" | "archive" | "trash" | "junk";
+export type MailboxScope = "all" | string;
 export type ComposeMode = "reply" | "reply_all" | "forward";
 export type ThreadActionName =
   | "archive"
@@ -9,7 +10,13 @@ export type ThreadActionName =
   | "delete"
   | "restore";
 
-export type ThreadSummary = {
+export type AccountSource = {
+  linked_account_id?: string | null;
+  account_email?: string | null;
+  account_name?: string | null;
+};
+
+export type ThreadSummary = AccountSource & {
   id: string;
   subject: string;
   snippet: string;
@@ -94,7 +101,7 @@ export type ThreadActionResponse = {
   deleted: boolean;
 };
 
-export type TaskItem = {
+export type TaskItem = AccountSource & {
   id: string;
   title: string;
   status: TaskStatus;
@@ -143,7 +150,7 @@ export type AuthSessionResponse = {
   account_picture: string | null;
 };
 
-export type CalendarEvent = {
+export type CalendarEvent = AccountSource & {
   id: string;
   title: string;
   starts_at: string;
@@ -168,6 +175,7 @@ export type CreateCalendarEventRequest = {
   title: string;
   starts_at: string;
   ends_at: string;
+  linked_account_id?: string | null;
   is_all_day?: boolean;
   location?: string | null;
   description?: string | null;

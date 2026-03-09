@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "@inboxos/lib/api";
 import { formatDate } from "@inboxos/lib/format";
-import { TaskItem } from "@inboxos/types";
+import { AuthSessionResponse, TaskItem } from "@inboxos/types";
 
 type StatusFilter = "all" | "open" | "completed";
 
@@ -35,25 +35,46 @@ function derivePriority(task: TaskItem): "high" | "medium" | "low" {
 }
 
 export function TasksView() {
+  const [session, setSession] = useState<AuthSessionResponse | null>(null);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [accountFilter, setAccountFilter] = useState<string>("all");
   const [pageIndex, setPageIndex] = useState(0);
   const [newTitle, setNewTitle] = useState("");
   const [newCategory, setNewCategory] = useState("");
   const [newDueAt, setNewDueAt] = useState("");
+  const [newLinkedAccountId, setNewLinkedAccountId] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
+  const linkedAccounts = useMemo(
+    () =>
+      (session?.linked_accounts ?? []).filter(
+        (account) => account.status === "active",
+      ),
+    [session?.linked_accounts],
+  );
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.getTasks();
+      const [nextSession, data] = await Promise.all([
+        api.getSession(),
+        api.getTasks(),
+      ]);
+      if (!nextSession.authenticated) {
+        window.location.href = "/auth";
+        return;
+      }
+      setSession(nextSession);
+      setNewLinkedAccountId(
+        (current) => current || nextSession.active_account_id || "",
+      );
       setTasks(data);
     } catch (loadError) {
       setTasks([]);
@@ -91,6 +112,12 @@ export function TasksView() {
         ) {
           return false;
         }
+        if (
+          accountFilter !== "all" &&
+          (task.linked_account_id ?? "__none__") !== accountFilter
+        ) {
+          return false;
+        }
         if (!query) {
           return true;
         }
@@ -100,6 +127,7 @@ export function TasksView() {
           task.title,
           task.category ?? "",
           task.thread_id ?? "",
+          task.account_email ?? "",
         ]
           .join(" ")
           .toLowerCase();
@@ -115,7 +143,7 @@ export function TasksView() {
       });
 
     return next;
-  }, [categoryFilter, search, statusFilter, tasks]);
+  }, [accountFilter, categoryFilter, search, statusFilter, tasks]);
 
   const totalPages = Math.max(1, Math.ceil(filteredTasks.length / PAGE_SIZE));
   const pagedTasks = filteredTasks.slice(
@@ -125,7 +153,7 @@ export function TasksView() {
 
   useEffect(() => {
     setPageIndex(0);
-  }, [search, statusFilter, categoryFilter]);
+  }, [accountFilter, categoryFilter, search, statusFilter]);
 
   useEffect(() => {
     if (pageIndex > totalPages - 1) {
@@ -148,6 +176,8 @@ export function TasksView() {
         title: newTitle.trim(),
         category: newCategory.trim() || null,
         due_at: newDueAt ? new Date(newDueAt).toISOString() : null,
+        linked_account_id:
+          newLinkedAccountId || session?.active_account_id || null,
         thread_id: null,
       });
       await loadTasks();
@@ -187,7 +217,10 @@ export function TasksView() {
       <section className="panel-surface tasks-hero">
         <div>
           <h1>Tasks</h1>
-          <p>Task workflow with filters, pagination, and completion actions.</p>
+          <p>
+            Task workflow across all linked accounts, with account-aware
+            filtering and creation.
+          </p>
         </div>
         <div className="task-kpis">
           <div>
@@ -208,6 +241,17 @@ export function TasksView() {
       <section className="panel-surface task-create">
         <h2>Create Task</h2>
         <form className="task-create-form" onSubmit={createTask}>
+          <select
+            value={newLinkedAccountId}
+            onChange={(event) => setNewLinkedAccountId(event.target.value)}
+            aria-label="Task account"
+          >
+            {linkedAccounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.provider_account_ref ?? account.display_name}
+              </option>
+            ))}
+          </select>
           <input
             value={newTitle}
             onChange={(event) => setNewTitle(event.target.value)}
@@ -268,6 +312,19 @@ export function TasksView() {
               </option>
             ))}
           </select>
+
+          <select
+            value={accountFilter}
+            onChange={(event) => setAccountFilter(event.target.value)}
+            aria-label="Filter by account"
+          >
+            <option value="all">All accounts</option>
+            {linkedAccounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.provider_account_ref ?? account.display_name}
+              </option>
+            ))}
+          </select>
         </div>
 
         {error ? <p className="status error">{error}</p> : null}
@@ -281,6 +338,7 @@ export function TasksView() {
                 <tr>
                   <th>ID</th>
                   <th>Title</th>
+                  <th>Account</th>
                   <th>Status</th>
                   <th>Priority</th>
                   <th>Category</th>
@@ -291,7 +349,7 @@ export function TasksView() {
               <tbody>
                 {pagedTasks.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="empty-cell">
+                    <td colSpan={8} className="empty-cell">
                       No tasks in this view.
                     </td>
                   </tr>
@@ -302,6 +360,7 @@ export function TasksView() {
                       <tr key={task.id}>
                         <td>{task.id}</td>
                         <td className="task-title-cell">{task.title}</td>
+                        <td>{task.account_email ?? "Unassigned"}</td>
                         <td>
                           <span className={`pill status-${task.status}`}>
                             {task.status}
