@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, CalendarDays, Mail } from "lucide-react";
 
 import { api } from "@inboxos/lib/api";
 import { AuthSessionResponse } from "@inboxos/types";
@@ -100,25 +99,8 @@ export function AuthView() {
               </p>
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            {[
-              { label: "Gmail inbox threads", icon: Mail },
-              { label: "Google Calendar events", icon: CalendarDays },
-              { label: "Cookie-backed session redirect", icon: ArrowRight },
-            ].map((item) => (
-              <div
-                key={item.label}
-                className="rounded-[16px] border border-white/80 bg-white/85 p-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
-              >
-                <item.icon size={16} className="text-[#334155]" />
-                <p className="mt-3 text-[0.88rem] font-medium text-[#0f172a]">
-                  {item.label}
-                </p>
-              </div>
-            ))}
-          </div>
         </div>
-        <p className="m-0 text-[0.95rem] font-medium text-[#1e293b]">
+        <p className="m-0 max-w-[34rem] text-[1rem] leading-7 text-[#475569]">
           Agentic first mail
         </p>
       </section>
