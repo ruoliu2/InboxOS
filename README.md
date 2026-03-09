@@ -146,6 +146,17 @@ Deploys are branch-driven:
 - `main` auto deploys the production environment on Vercel, Railway, and Supabase
 - `gamma` auto deploys the gamma environment on Vercel, Railway, and Supabase
 
+### One Command Trigger
+
+Once Vercel, Railway, and Supabase are already bound to the release branches, use:
+
+```bash
+make deploy-gamma
+make deploy-main
+```
+
+Each target pushes the current clean, fast-forwardable commit to the matching release branch through `scripts/deploy-branch.sh`. That single branch update is the shared deployment trigger for the web app, API, and Supabase release flow.
+
 ### Web on Vercel
 
 - production branch: `main`

@@ -1,4 +1,4 @@
-.PHONY: api-dev web-dev desktop-dev dev api-test api-lint api-format web-lint web-format web-build format install-hooks up down down-v supabase-start supabase-stop supabase-reset
+.PHONY: api-dev web-dev desktop-dev dev api-test api-lint api-format web-lint web-format web-build format install-hooks up down down-v supabase-start supabase-stop supabase-reset deploy-gamma deploy-main
 
 api-dev:
 	cd apps/api && uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -53,3 +53,9 @@ supabase-stop:
 
 supabase-reset:
 	supabase db reset
+
+deploy-gamma:
+	./scripts/deploy-branch.sh gamma
+
+deploy-main:
+	./scripts/deploy-branch.sh main
