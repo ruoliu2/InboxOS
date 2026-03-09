@@ -83,7 +83,7 @@ export function AuthView() {
     "your Google account";
 
   return (
-    <main className="grid h-full min-h-0 gap-6 rounded-[12px] border border-[var(--line)] bg-white p-6 shadow-[var(--shadow)] lg:grid-cols-[minmax(0,1.15fr)_420px]">
+    <main className="grid h-full min-h-0 gap-5 rounded-[12px] border border-[var(--line)] bg-white p-5 shadow-[var(--shadow)] md:grid-cols-[minmax(0,1.05fr)_400px] md:gap-6 md:p-6">
       <section className="flex flex-col justify-between rounded-[18px] border border-[#e2e8f0] bg-[linear-gradient(180deg,#f8fafc_0%,#eef2ff_100%)] p-8">
         <div className="grid gap-8">
           <div className="grid gap-3">
@@ -118,15 +118,9 @@ export function AuthView() {
             ))}
           </div>
         </div>
-        <blockquote className="m-0 rounded-[16px] border border-[#dbeafe] bg-white/75 p-5">
-          <p className="m-0 text-[0.95rem] leading-6 text-[#1e293b]">
-            Connect Google once, then use the same mailbox and calendar across
-            the web shell and desktop shell instead of a mock workspace.
-          </p>
-          <footer className="mt-3 text-[0.78rem] font-medium uppercase tracking-[0.1em] text-[#64748b]">
-            Google workspace mode
-          </footer>
-        </blockquote>
+        <p className="m-0 text-[0.95rem] font-medium text-[#1e293b]">
+          Agentic first mail
+        </p>
       </section>
 
       <section className="flex min-h-0 items-center justify-center">

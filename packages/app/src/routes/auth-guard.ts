@@ -8,13 +8,14 @@ const SESSION_COOKIE_NAME =
 
 type AuthSessionStatus = {
   authenticated: boolean;
+  uncertain: boolean;
 };
 
 export async function getAuthSessionStatus(): Promise<AuthSessionStatus> {
   const cookieStore = cookies();
   const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   if (!sessionCookie) {
-    return { authenticated: false };
+    return { authenticated: false, uncertain: false };
   }
 
   try {
@@ -26,18 +27,19 @@ export async function getAuthSessionStatus(): Promise<AuthSessionStatus> {
     });
 
     if (!response.ok) {
-      return { authenticated: false };
+      return { authenticated: false, uncertain: true };
     }
 
-    return (await response.json()) as AuthSessionStatus;
+    const session = (await response.json()) as { authenticated: boolean };
+    return { authenticated: session.authenticated, uncertain: false };
   } catch {
-    return { authenticated: false };
+    return { authenticated: false, uncertain: true };
   }
 }
 
 export async function redirectIfUnauthenticated() {
   const session = await getAuthSessionStatus();
-  if (!session.authenticated) {
+  if (!session.authenticated && !session.uncertain) {
     redirect("/auth");
   }
 }
