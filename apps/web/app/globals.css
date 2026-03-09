@@ -736,7 +736,12 @@ textarea {
 
 .mail-compose-form {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, auto) minmax(260px, 1fr);
+  grid-template-rows:
+    var(--compose-row-height)
+    var(--compose-row-height)
+    var(--compose-row-height)
+    minmax(0, auto)
+    minmax(260px, 1fr);
   min-height: 0;
 }
 
