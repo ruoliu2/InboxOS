@@ -44,8 +44,11 @@ export async function MailPage({ searchParams }: MailPageProps) {
     ? selectedParam[0]
     : selectedParam;
 
-  const initialSession =
-    await serverRequest<AuthSessionResponse>("/auth/session");
+  const sessionResponse =
+    await serverRequestOrNull<AuthSessionResponse>("/auth/session");
+  const initialSession = sessionResponse?.authenticated
+    ? sessionResponse
+    : null;
   const initialThreadPage = await serverRequestOrNull<ThreadSummaryPage>(
     "/gmail/threads?page_size=20",
   );
