@@ -83,6 +83,18 @@ export type ComposeThreadResponse = {
   mode: ComposeMode;
 };
 
+export type SendGmailMessageRequest = {
+  to: string[];
+  subject: string;
+  body: string;
+  attachments?: File[];
+};
+
+export type SendGmailMessageResponse = {
+  thread: ThreadDetail;
+  sent_message: ThreadMessage;
+};
+
 export type ThreadActionRequest = {
   action: ThreadActionName;
 };

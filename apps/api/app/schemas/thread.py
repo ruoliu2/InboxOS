@@ -131,6 +131,35 @@ class ComposeThreadResponse(BaseModel):
     mode: ComposeMode
 
 
+class SendGmailMessageRequest(BaseModel):
+    to: list[str] = Field(default_factory=list)
+    subject: str = Field(min_length=1)
+    body: str = ""
+
+    @field_validator("to")
+    @classmethod
+    def validate_to(cls, value: list[str]) -> list[str]:
+        recipients = [item.strip().lower() for item in value if item.strip()]
+        if not recipients:
+            raise ValueError("At least one recipient is required.")
+        if any("@" not in item for item in recipients):
+            raise ValueError("Recipients must be email addresses.")
+        return recipients
+
+    @field_validator("subject")
+    @classmethod
+    def validate_subject(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Subject must not be empty.")
+        return normalized
+
+
+class SendGmailMessageResponse(BaseModel):
+    thread: ThreadDetail
+    sent_message: ThreadMessage
+
+
 class ThreadActionName(StrEnum):
     ARCHIVE = "archive"
     JUNK = "junk"

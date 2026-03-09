@@ -707,6 +707,103 @@ textarea {
   height: 16px;
 }
 
+.mail-compose-modal {
+  width: min(560px, 100%);
+}
+
+.mail-compose-form {
+  display: grid;
+  gap: 12px;
+}
+
+.mail-compose-field {
+  display: grid;
+  gap: 6px;
+}
+
+.mail-compose-field span {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #3f3f46;
+}
+
+.mail-compose-attachment-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mail-compose-attachment-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  padding: 7px 12px;
+  font-size: 0.82rem;
+}
+
+.mail-compose-attachments {
+  display: grid;
+  gap: 8px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.mail-compose-attachment-card {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+  background: #fafafa;
+}
+
+.mail-compose-attachment-preview {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #e5e7eb;
+}
+
+.mail-compose-attachment-meta {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.mail-compose-attachment-meta strong,
+.mail-compose-attachment-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-compose-attachment-meta strong {
+  font-size: 0.82rem;
+}
+
+.mail-compose-attachment-meta span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.mail-compose-attachment-remove {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+}
+
+.mail-compose-body {
+  min-height: 180px;
+}
+
 .send-button {
   min-width: 72px;
   border: 1px solid #111827;

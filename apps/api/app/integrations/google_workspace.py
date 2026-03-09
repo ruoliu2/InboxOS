@@ -22,6 +22,7 @@ from app.schemas.thread import (
     ComposeThreadRequest,
     MailboxCountsResponse,
     MailboxKey,
+    SendGmailMessageRequest,
     ThreadDetail,
     ThreadInlineAsset,
     ThreadMessage,
@@ -75,6 +76,13 @@ class ExtractedMessageContent:
 class GmailComposeResult:
     thread: ThreadDetail
     sent_message: ThreadMessage
+
+
+@dataclass
+class GmailOutgoingAttachment:
+    filename: str
+    content_type: str
+    data: bytes
 
 
 @dataclass
@@ -301,20 +309,16 @@ class GoogleWorkspaceClient:
         if payload.bcc:
             message["Bcc"] = ", ".join(payload.bcc)
         message["Subject"] = subject
-        message.set_content(message_body)
-        raw = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8").rstrip("=")
+        self._set_message_body(message, message_body)
 
-        send_payload = {
-            "raw": raw,
-        }
-        if payload.mode in (ComposeMode.REPLY, ComposeMode.REPLY_ALL):
-            send_payload["threadId"] = thread_id
-
-        sent_payload = self._request(
-            "POST",
-            f"{GMAIL_API_BASE}/messages/send",
-            access_token=access_token,
-            json=send_payload,
+        sent_payload = self._send_gmail_message_payload(
+            access_token,
+            message,
+            thread_id=(
+                thread_id
+                if payload.mode in (ComposeMode.REPLY, ComposeMode.REPLY_ALL)
+                else None
+            ),
         )
 
         refetched_thread_id = thread_id
@@ -326,6 +330,34 @@ class GoogleWorkspaceClient:
                 )
 
         refetched_thread = self.get_gmail_thread(access_token, refetched_thread_id)
+        return GmailComposeResult(
+            thread=refetched_thread,
+            sent_message=refetched_thread.messages[-1],
+        )
+
+    def send_gmail_message(
+        self,
+        access_token: str,
+        *,
+        account_email: str,
+        payload: SendGmailMessageRequest,
+        attachments: list[GmailOutgoingAttachment] | None = None,
+    ) -> GmailComposeResult:
+        message = EmailMessage()
+        message["From"] = account_email
+        message["To"] = ", ".join(payload.to)
+        message["Subject"] = payload.subject
+        self._set_message_body(message, payload.body)
+        self._add_message_attachments(message, attachments or [])
+
+        sent_payload = self._send_gmail_message_payload(access_token, message)
+        thread_id = str(sent_payload.get("threadId") or "").strip()
+        if not thread_id:
+            raise RuntimeError(
+                "Gmail send response did not include a thread id for the new message."
+            )
+
+        refetched_thread = self.get_gmail_thread(access_token, thread_id)
         return GmailComposeResult(
             thread=refetched_thread,
             sent_message=refetched_thread.messages[-1],
@@ -500,6 +532,45 @@ class GoogleWorkspaceClient:
             "POST",
             url,
             data={key: value for key, value in payload.items() if value is not None},
+        )
+
+    def _set_message_body(self, message: EmailMessage, body: str) -> None:
+        message.set_content(body)
+
+    def _add_message_attachments(
+        self,
+        message: EmailMessage,
+        attachments: list[GmailOutgoingAttachment],
+    ) -> None:
+        for attachment in attachments:
+            maintype, subtype = attachment.content_type.split("/", maxsplit=1)
+            message.add_attachment(
+                attachment.data,
+                maintype=maintype,
+                subtype=subtype,
+                filename=attachment.filename,
+            )
+
+    def _build_raw_message(self, message: EmailMessage) -> str:
+        return base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8").rstrip("=")
+
+    def _send_gmail_message_payload(
+        self,
+        access_token: str,
+        message: EmailMessage,
+        *,
+        thread_id: str | None = None,
+    ) -> dict[str, Any]:
+        send_payload: dict[str, Any] = {
+            "raw": self._build_raw_message(message),
+        }
+        if thread_id:
+            send_payload["threadId"] = thread_id
+        return self._request(
+            "POST",
+            f"{GMAIL_API_BASE}/messages/send",
+            access_token=access_token,
+            json=send_payload,
         )
 
     def _get_gmail_thread_payload(

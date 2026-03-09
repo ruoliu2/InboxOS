@@ -1,8 +1,24 @@
 from datetime import UTC, datetime
+from mimetypes import guess_type
+from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+)
+from pydantic import ValidationError
 
-from app.integrations.google_workspace import GoogleAPIError, GoogleWorkspaceClient
+from app.integrations.google_workspace import (
+    GmailOutgoingAttachment,
+    GoogleAPIError,
+    GoogleWorkspaceClient,
+)
 from app.schemas.thread import (
     ComposeThreadRequest,
     ComposeThreadResponse,
@@ -10,6 +26,8 @@ from app.schemas.thread import (
     MailboxKey,
     ReplyToThreadRequest,
     ReplyToThreadResponse,
+    SendGmailMessageRequest,
+    SendGmailMessageResponse,
     ThreadActionRequest,
     ThreadActionResponse,
     ThreadDetail,
@@ -301,6 +319,82 @@ def compose_gmail_thread(
         thread=result.thread,
         sent_message=result.sent_message,
         mode=payload.mode,
+    )
+
+
+@router.post("/messages/send", response_model=SendGmailMessageResponse)
+async def send_gmail_message(
+    to: Annotated[list[str], Form()],
+    subject: Annotated[str, Form()],
+    body: Annotated[str, Form()] = "",
+    attachments: Annotated[list[UploadFile] | None, File()] = None,
+    session: AuthSessionRecord = Depends(get_current_auth_session),
+    client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
+    cache: GmailMailboxCache = Depends(get_gmail_mailbox_cache),
+    conversation_store: ConversationStore = Depends(get_conversation_store),
+) -> SendGmailMessageResponse:
+    account_email, access_token = require_active_google_account(session)
+    try:
+        payload = SendGmailMessageRequest.model_validate(
+            {
+                "to": to,
+                "subject": subject,
+                "body": body,
+            }
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+
+    outgoing_attachments: list[GmailOutgoingAttachment] = []
+    for index, upload in enumerate(attachments or [], start=1):
+        content_type = (
+            upload.content_type or guess_type(upload.filename or "")[0] or ""
+        ).strip()
+        if not content_type.startswith("image/"):
+            raise HTTPException(
+                status_code=422,
+                detail=f"{upload.filename or 'Attachment'} must be an image file.",
+            )
+        data = await upload.read()
+        if not data:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{upload.filename or 'Attachment'} is empty.",
+            )
+        subtype = (
+            content_type.split("/", maxsplit=1)[1] if "/" in content_type else "png"
+        )
+        outgoing_attachments.append(
+            GmailOutgoingAttachment(
+                filename=upload.filename or f"image-{index}.{subtype}",
+                content_type=content_type,
+                data=data,
+            )
+        )
+
+    try:
+        result = client.send_gmail_message(
+            access_token,
+            account_email=account_email,
+            payload=payload,
+            attachments=outgoing_attachments,
+        )
+    except GoogleAPIError as exc:
+        raise HTTPException(status_code=exc.app_status_code, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    cache.invalidate_account_pages(account_email)
+    cache.upsert_thread_detail(account_email, result.thread)
+    persist_threads(
+        session,
+        conversation_store,
+        [result.thread],
+        source_folder=None,
+    )
+    return SendGmailMessageResponse(
+        thread=result.thread,
+        sent_message=result.sent_message,
     )
 
 
