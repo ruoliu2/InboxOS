@@ -150,6 +150,16 @@ Set these environment variables for gamma:
 
 If `GOOGLE_REDIRECT_URI` is unset, Railway deployments fall back to `RAILWAY_PUBLIC_DOMAIN` for the callback URL.
 
+### Cross-Origin Session Safety
+
+The current API authenticates browser requests with an HTTP-only session cookie. If you deploy the web app and API on different origins and keep `SESSION_COOKIE_SECURE=true` with cross-origin cookies enabled, you must pair that setup with a CSRF defense before treating it as production-ready for state-changing routes.
+
+For this repo today:
+
+- prefer same-origin deployment for the web app and API when possible
+- otherwise require an origin-bound CSRF token or a custom header validated server-side before enabling cross-origin authenticated writes
+- do not assume CORS alone protects `POST` form submissions from third-party sites
+
 ### Gamma Railway Verification
 
 After a `gamma` branch push:

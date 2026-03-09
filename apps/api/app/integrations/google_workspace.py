@@ -543,11 +543,12 @@ class GoogleWorkspaceClient:
         attachments: list[GmailOutgoingAttachment],
     ) -> None:
         for attachment in attachments:
-            maintype, subtype = attachment.content_type.split("/", maxsplit=1)
+            media_type = attachment.content_type.partition(";")[0].strip().lower()
+            maintype, _, subtype = media_type.partition("/")
             message.add_attachment(
                 attachment.data,
                 maintype=maintype,
-                subtype=subtype,
+                subtype=subtype or "png",
                 filename=attachment.filename,
             )
 

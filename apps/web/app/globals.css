@@ -707,11 +707,13 @@ textarea {
   height: 16px;
 }
 
-.mail-compose-modal {
+.overlay-card.mail-compose-modal {
   --compose-row-height: 44px;
-  width: min(1120px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  width: min(980px, calc(100vw - 40px));
   height: min(620px, calc(100vh - 40px));
-  min-width: 860px;
+  min-width: 760px;
   min-height: 84px;
   max-width: calc(100vw - 24px);
   max-height: calc(100vh - 24px);
@@ -735,14 +737,21 @@ textarea {
 }
 
 .mail-compose-form {
-  display: grid;
-  grid-template-rows:
-    var(--compose-row-height)
-    var(--compose-row-height)
-    var(--compose-row-height)
-    minmax(0, auto)
-    minmax(260px, 1fr);
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
   min-height: 0;
+}
+
+.mail-compose-fields {
+  display: grid;
+  grid-auto-rows: var(--compose-row-height);
+  height: calc(var(--compose-row-height) * 3);
+  min-height: calc(var(--compose-row-height) * 3);
+  max-height: calc(var(--compose-row-height) * 3);
+  align-content: start;
+  flex: 0 0 calc(var(--compose-row-height) * 3);
+  overflow: hidden;
 }
 
 .mail-compose-topbar {
@@ -900,6 +909,7 @@ textarea {
 .mail-compose-attachments {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  flex: 0 0 auto;
   gap: 8px;
   max-height: 144px;
   overflow: auto;
@@ -910,6 +920,7 @@ textarea {
 
 .mail-compose-body-wrap {
   display: block;
+  flex: 1 1 auto;
   min-height: 0;
 }
 

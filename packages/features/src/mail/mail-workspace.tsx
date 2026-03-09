@@ -488,13 +488,16 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   }, [loadInitialThreads, session?.authenticated, sessionChecked]);
 
   useEffect(() => {
+    if (sendingNewMessage) {
+      return;
+    }
     setComposeMode("reply");
     setComposeBody("");
     setForwardTo("");
     setForwardCc("");
     setForwardBcc("");
     clearNewMessageComposer();
-  }, [clearNewMessageComposer, selectedThreadId]);
+  }, [clearNewMessageComposer, selectedThreadId, sendingNewMessage]);
 
   useEffect(() => {
     if (!selectedThreadId) {
@@ -613,6 +616,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
 
   function toggleNewMessageMinimized() {
     setScheduleMenuOpen(false);
+    setNewMessageMaximized(false);
     setNewMessageMinimized((current) => !current);
   }
 
@@ -1295,12 +1299,10 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
                         role="menuitem"
                         onClick={() => {
                           setScheduleMenuOpen(false);
-                          setNotice(
-                            "Schedule send is not available in gamma yet.",
-                          );
+                          void sendNewMessage();
                         }}
                       >
-                        Tomorrow at 8:00 AM
+                        Send now
                       </button>
                       <button
                         type="button"
@@ -1308,11 +1310,11 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
                         onClick={() => {
                           setScheduleMenuOpen(false);
                           setNotice(
-                            "Schedule send is not available in gamma yet.",
+                            "Send at 8:00 am is not available in gamma yet.",
                           );
                         }}
                       >
-                        Next Monday at 9:00 AM
+                        Send at 8:00 am
                       </button>
                     </div>
                   ) : null}
@@ -1342,32 +1344,34 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
 
             {!newMessageMinimized ? (
               <div className="mail-compose-form">
-                <label className="mail-compose-row">
-                  <span>To:</span>
-                  <input
-                    ref={newMessageToRef}
-                    value={newMessageTo}
-                    onChange={(event) => setNewMessageTo(event.target.value)}
-                    aria-label="Message recipients"
-                  />
-                </label>
-                <label className="mail-compose-row">
-                  <span>Subject:</span>
-                  <input
-                    value={newMessageSubject}
-                    onChange={(event) =>
-                      setNewMessageSubject(event.target.value)
-                    }
-                    aria-label="Message subject"
-                  />
-                </label>
-                <div className="mail-compose-row mail-compose-row-static">
-                  <span>From:</span>
-                  <div className="mail-compose-static-value">
-                    {accountLabel}
-                    {session?.account_email
-                      ? ` - ${session.account_email}`
-                      : ""}
+                <div className="mail-compose-fields">
+                  <label className="mail-compose-row">
+                    <span>To:</span>
+                    <input
+                      ref={newMessageToRef}
+                      value={newMessageTo}
+                      onChange={(event) => setNewMessageTo(event.target.value)}
+                      aria-label="Message recipients"
+                    />
+                  </label>
+                  <label className="mail-compose-row">
+                    <span>Subject:</span>
+                    <input
+                      value={newMessageSubject}
+                      onChange={(event) =>
+                        setNewMessageSubject(event.target.value)
+                      }
+                      aria-label="Message subject"
+                    />
+                  </label>
+                  <div className="mail-compose-row mail-compose-row-static">
+                    <span>From:</span>
+                    <div className="mail-compose-static-value">
+                      {accountLabel}
+                      {session?.account_email
+                        ? ` - ${session.account_email}`
+                        : ""}
+                    </div>
                   </div>
                 </div>
 

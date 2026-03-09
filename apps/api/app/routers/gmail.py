@@ -50,6 +50,11 @@ from app.storage.mailbox_cache import GmailMailboxCache
 
 router = APIRouter()
 
+MAX_GMAIL_MESSAGE_ATTACHMENTS = 10
+MAX_GMAIL_ATTACHMENT_BYTES = 10 * 1024 * 1024
+MAX_GMAIL_TOTAL_ATTACHMENT_BYTES = 20 * 1024 * 1024
+ATTACHMENT_READ_CHUNK_BYTES = 1024 * 1024
+
 
 def refresh_gmail_thread_page_cache(
     account_email: str,
@@ -322,8 +327,12 @@ def compose_gmail_thread(
     )
 
 
+def normalize_media_type(value: str | None) -> str:
+    return (value or "").partition(";")[0].strip().lower()
+
+
 @router.post("/messages/send", response_model=SendGmailMessageResponse)
-async def send_gmail_message(
+def send_gmail_message(
     to: Annotated[list[str], Form()],
     subject: Annotated[str, Form()],
     body: Annotated[str, Form()] = "",
@@ -346,31 +355,68 @@ async def send_gmail_message(
         raise HTTPException(status_code=422, detail=exc.errors()) from exc
 
     outgoing_attachments: list[GmailOutgoingAttachment] = []
-    for index, upload in enumerate(attachments or [], start=1):
-        content_type = (
-            upload.content_type or guess_type(upload.filename or "")[0] or ""
-        ).strip()
-        if not content_type.startswith("image/"):
-            raise HTTPException(
-                status_code=422,
-                detail=f"{upload.filename or 'Attachment'} must be an image file.",
-            )
-        data = await upload.read()
-        if not data:
-            raise HTTPException(
-                status_code=422,
-                detail=f"{upload.filename or 'Attachment'} is empty.",
-            )
-        subtype = (
-            content_type.split("/", maxsplit=1)[1] if "/" in content_type else "png"
+    total_attachment_bytes = 0
+    uploaded_attachments = attachments or []
+    if len(uploaded_attachments) > MAX_GMAIL_MESSAGE_ATTACHMENTS:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"You can attach up to {MAX_GMAIL_MESSAGE_ATTACHMENTS} images per message."
+            ),
         )
-        outgoing_attachments.append(
-            GmailOutgoingAttachment(
-                filename=upload.filename or f"image-{index}.{subtype}",
-                content_type=content_type,
-                data=data,
+    for index, upload in enumerate(uploaded_attachments, start=1):
+        try:
+            content_type = normalize_media_type(
+                upload.content_type or guess_type(upload.filename or "")[0]
             )
-        )
+            if not content_type.startswith("image/"):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"{upload.filename or 'Attachment'} must be an image file.",
+                )
+            chunks: list[bytes] = []
+            file_size = 0
+            while True:
+                chunk = upload.file.read(ATTACHMENT_READ_CHUNK_BYTES)
+                if not chunk:
+                    break
+                file_size += len(chunk)
+                if file_size > MAX_GMAIL_ATTACHMENT_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=(
+                            f"{upload.filename or 'Attachment'} exceeds the "
+                            "10 MiB attachment limit."
+                        ),
+                    )
+                if (
+                    total_attachment_bytes + file_size
+                    > MAX_GMAIL_TOTAL_ATTACHMENT_BYTES
+                ):
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Attachments exceed the 20 MiB total size limit.",
+                    )
+                chunks.append(chunk)
+
+            data = b"".join(chunks)
+            if not data:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"{upload.filename or 'Attachment'} is empty.",
+                )
+
+            total_attachment_bytes += file_size
+            subtype = content_type.partition("/")[2] or "png"
+            outgoing_attachments.append(
+                GmailOutgoingAttachment(
+                    filename=upload.filename or f"image-{index}.{subtype}",
+                    content_type=content_type,
+                    data=data,
+                )
+            )
+        finally:
+            upload.file.close()
 
     try:
         result = client.send_gmail_message(
