@@ -1255,6 +1255,30 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
             </div>
 
             <div className="mail-compose-form">
+              <div className="mail-compose-utility-row">
+                <div className="mail-compose-attachment-controls">
+                  <button
+                    type="button"
+                    className="mail-compose-attachment-button"
+                    onClick={() => newMessageFileInputRef.current?.click()}
+                  >
+                    <Paperclip size={14} />
+                    Attach Picture
+                  </button>
+                  <span className="muted">
+                    Add PNG, JPEG, GIF, or WebP images
+                  </span>
+                </div>
+                <input
+                  ref={newMessageFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  hidden
+                  onChange={handleNewMessageAttachments}
+                />
+              </div>
+
               <label className="mail-compose-row">
                 <span>To:</span>
                 <input
@@ -1329,28 +1353,6 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
                   aria-label="Message body"
                 />
               </label>
-            </div>
-
-            <div className="mail-compose-footer">
-              <div className="mail-compose-attachment-controls">
-                <button
-                  type="button"
-                  className="mail-compose-attachment-button"
-                  onClick={() => newMessageFileInputRef.current?.click()}
-                >
-                  <Paperclip size={14} />
-                  Attach Image
-                </button>
-                <input
-                  ref={newMessageFileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  hidden
-                  onChange={handleNewMessageAttachments}
-                />
-                <span className="muted">PNG, JPEG, GIF, and WebP</span>
-              </div>
             </div>
           </div>
         </div>

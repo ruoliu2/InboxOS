@@ -708,17 +708,23 @@ textarea {
 }
 
 .mail-compose-modal {
-  width: min(960px, calc(100vw - 48px));
-  min-height: min(720px, calc(100vh - 56px));
-  border-radius: 20px;
+  width: min(1120px, calc(100vw - 32px));
+  height: min(640px, calc(100vh - 40px));
+  min-width: 860px;
+  min-height: 500px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  border-radius: 18px;
   padding: 0;
   overflow: hidden;
   gap: 0;
+  resize: both;
 }
 
 .mail-compose-form {
   display: grid;
-  grid-template-rows: auto auto auto auto minmax(280px, 1fr);
+  grid-template-rows: auto auto auto auto auto minmax(260px, 1fr);
+  min-height: 0;
 }
 
 .mail-compose-topbar {
@@ -728,7 +734,7 @@ textarea {
   gap: 12px;
   padding: 14px 18px;
   border-bottom: 1px solid #e5e7eb;
-  background: #f5f5f5;
+  background: #f7f7f8;
 }
 
 .mail-compose-window-controls {
@@ -825,14 +831,25 @@ textarea {
   font-size: 0.86rem;
 }
 
+.mail-compose-utility-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 22px;
+  border-bottom: 1px solid #ececec;
+  background: #fbfbfb;
+}
+
 .mail-compose-attachments {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 8px;
-  max-height: 164px;
+  max-height: 144px;
   overflow: auto;
   padding: 12px 22px;
   border-bottom: 1px solid #ececec;
-  background: #fafafa;
+  background: #fcfcfc;
 }
 
 .mail-compose-body-wrap {
@@ -895,16 +912,6 @@ textarea {
   outline: none;
 }
 
-.mail-compose-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 10px;
-  padding: 12px 18px;
-  border-top: 1px solid #e5e7eb;
-  background: #f8f8f8;
-}
-
 .mail-compose-attachment-controls {
   display: flex;
   align-items: center;
@@ -930,6 +937,41 @@ textarea {
   display: grid;
   place-items: center;
   box-shadow: none;
+}
+
+@media (max-width: 960px) {
+  .mail-compose-modal {
+    width: min(calc(100vw - 20px), 840px);
+    height: min(calc(100vh - 20px), 720px);
+    min-width: 0;
+    min-height: 0;
+    resize: none;
+  }
+
+  .mail-compose-utility-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .mail-compose-topbar {
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+
+  .mail-compose-title-wrap {
+    text-align: left;
+  }
+
+  .mail-compose-topbar-actions {
+    justify-self: stretch;
+  }
+
+  .mail-compose-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
 }
 
 .send-button {
