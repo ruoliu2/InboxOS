@@ -20,6 +20,10 @@ import {
   MailboxKey,
 } from "@inboxos/types";
 
+export type SendGmailMessageInput = SendGmailMessageRequest & {
+  attachments?: unknown[];
+};
+
 async function readErrorMessage(response: Response): Promise<string> {
   const body = await response.text();
   if (!body) {
@@ -138,7 +142,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  sendGmailMessage: (payload: SendGmailMessageRequest) => {
+  sendGmailMessage: (payload: SendGmailMessageInput) => {
     const formData = new FormData();
     for (const recipient of payload.to) {
       formData.append("to", recipient);
@@ -146,7 +150,7 @@ export const api = {
     formData.append("subject", payload.subject);
     formData.append("body", payload.body);
     for (const attachment of payload.attachments ?? []) {
-      formData.append("attachments", attachment);
+      formData.append("attachments", attachment as never);
     }
 
     return request<SendGmailMessageResponse>("/gmail/messages/send", {

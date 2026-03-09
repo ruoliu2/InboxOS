@@ -1081,6 +1081,87 @@ def test_send_message_route_rejects_too_many_attachments(client, monkeypatch):
     assert str(MAX_GMAIL_MESSAGE_ATTACHMENTS) in response.json()["detail"]
 
 
+def test_send_message_route_rejects_excess_total_attachment_size(
+    client,
+    monkeypatch,
+):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
+
+    google_client = get_google_workspace_client()
+    monkeypatch.setattr(
+        google_client,
+        "send_gmail_message",
+        lambda access_token, **kwargs: pytest.fail("should not send"),
+    )
+
+    chunk = 7 * 1024 * 1024
+    response = client.post(
+        "/gmail/messages/send",
+        data={
+            "to": "friend@example.com",
+            "subject": "Fresh hello",
+        },
+        files=[
+            ("attachments", ("hello-1.png", b"x" * chunk, "image/png")),
+            ("attachments", ("hello-2.png", b"x" * chunk, "image/png")),
+            ("attachments", ("hello-3.png", b"x" * chunk, "image/png")),
+        ],
+    )
+
+    assert response.status_code == 413
+    assert "20 MiB total size limit" in response.json()["detail"]
+
+
+def test_send_message_route_rejects_cross_site_write_when_secure_cookie_enabled(
+    client,
+    monkeypatch,
+):
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "true")
+    monkeypatch.setenv("CORS_ORIGINS", "https://app.example.com")
+    monkeypatch.setenv("WEB_BASE_URL", "https://app.example.com")
+    restart_auth_dependencies()
+    try:
+        auth_store = get_auth_store()
+        session = build_session()
+        auth_store.upsert_session(session)
+        client.cookies.set(
+            get_settings().session_cookie_name,
+            session.session_id,
+            domain="testserver.local",
+        )
+
+        google_client = get_google_workspace_client()
+        monkeypatch.setattr(
+            google_client,
+            "send_gmail_message",
+            lambda access_token, **kwargs: pytest.fail("should not send"),
+        )
+
+        response = client.post(
+            "/gmail/messages/send",
+            headers={"origin": "https://evil.example.com"},
+            data={
+                "to": "friend@example.com",
+                "subject": "Fresh hello",
+            },
+        )
+
+        assert response.status_code == 403
+        assert "Cross-site write request rejected." in response.json()["detail"]
+    finally:
+        monkeypatch.delenv("SESSION_COOKIE_SECURE", raising=False)
+        monkeypatch.delenv("CORS_ORIGINS", raising=False)
+        monkeypatch.delenv("WEB_BASE_URL", raising=False)
+        restart_auth_dependencies()
+
+
 def test_thread_action_route_invalidates_cached_pages(client, monkeypatch):
     auth_store = get_auth_store()
     session = build_session()

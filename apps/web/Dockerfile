@@ -15,5 +15,6 @@ FROM node:20-bookworm-slim AS runtime
 WORKDIR /repo/apps/web
 ENV NODE_ENV=production
 COPY --from=builder /repo/apps/web /repo/apps/web
+COPY --from=builder /repo/packages /repo/packages
 EXPOSE 3000
 CMD ["npm", "run", "start"]
