@@ -1,10 +1,11 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
 import { SERVER_API_BASE } from "@inboxos/config/web";
 import { MailWorkspace } from "@inboxos/features/mail/mail-workspace";
 import { AuthSessionResponse, ThreadSummaryPage } from "@inboxos/types";
 
-import { redirectIfUnauthenticated } from "./auth-guard";
+import { hasSessionCookie } from "./auth-guard";
 
 type MailPageProps = {
   searchParams?: {
@@ -37,7 +38,12 @@ async function serverRequestOrNull<T>(path: string): Promise<T | null> {
 }
 
 export async function MailPage({ searchParams }: MailPageProps) {
-  await redirectIfUnauthenticated();
+  // Only hard-redirect when the browser never sent a session cookie at all.
+  // In production, the server-side auth probe can fail independently from the
+  // browser session that the client API uses successfully.
+  if (!hasSessionCookie()) {
+    redirect("/auth");
+  }
 
   const selectedParam = searchParams?.thread;
   const initialThreadId = Array.isArray(selectedParam)
