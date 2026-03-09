@@ -26,7 +26,6 @@ import {
   Send,
   Trash2,
   Triangle,
-  X,
 } from "lucide-react";
 
 import { api } from "@inboxos/lib/api";
@@ -569,6 +568,10 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     session?.account_email ??
     session?.user?.primary_email ??
     "Google account";
+  const canSendNewMessage =
+    parseRecipients(newMessageTo).length > 0 &&
+    Boolean(newMessageSubject.trim()) &&
+    !sendingNewMessage;
 
   function focusComposer(mode: ComposeMode) {
     setComposeMode(mode);
@@ -580,13 +583,14 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   }
 
   function openNewMessageComposer() {
-    if (!activeThread) {
-      return;
-    }
-
     clearNewMessageComposer();
     setNewMessageTo(
-      preferredComposeRecipientFromThread(activeThread, session?.account_email),
+      activeThread
+        ? preferredComposeRecipientFromThread(
+            activeThread,
+            session?.account_email,
+          )
+        : "",
     );
     setNotice(null);
     setError(null);
@@ -964,7 +968,6 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
               type="button"
               aria-label="Compose new email"
               onClick={openNewMessageComposer}
-              disabled={!activeThread}
             >
               <PenSquare size={15} />
             </button>
@@ -1214,14 +1217,45 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
             aria-modal="true"
             aria-labelledby="new-message-title"
           >
-            <div className="overlay-copy">
-              <h2 id="new-message-title">New message</h2>
-              <p>Compose a new email to the selected sender.</p>
+            <div className="mail-compose-topbar">
+              <div className="mail-compose-window-controls" aria-hidden>
+                <span className="mail-compose-window-dot close" />
+                <span className="mail-compose-window-dot minimize" />
+                <span className="mail-compose-window-dot zoom" />
+              </div>
+              <div className="mail-compose-title-wrap">
+                <h2 id="new-message-title">New Message</h2>
+                <p>
+                  {activeThread
+                    ? `Fresh message to ${displayNameFromThread(
+                        activeThread,
+                        session?.account_email,
+                      )}`
+                    : "Fresh message"}
+                </p>
+              </div>
+              <div className="mail-compose-topbar-actions">
+                <button
+                  type="button"
+                  onClick={closeNewMessageComposer}
+                  disabled={sendingNewMessage}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => void sendNewMessage()}
+                  disabled={!canSendNewMessage}
+                >
+                  {sendingNewMessage ? "Sending..." : "Send"}
+                </button>
+              </div>
             </div>
 
             <div className="mail-compose-form">
-              <label className="mail-compose-field">
-                <span>To</span>
+              <label className="mail-compose-row">
+                <span>To:</span>
                 <input
                   ref={newMessageToRef}
                   value={newMessageTo}
@@ -1230,8 +1264,8 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
                   aria-label="Message recipients"
                 />
               </label>
-              <label className="mail-compose-field">
-                <span>Subject</span>
+              <label className="mail-compose-row">
+                <span>Subject:</span>
                 <input
                   value={newMessageSubject}
                   onChange={(event) => setNewMessageSubject(event.target.value)}
@@ -1239,29 +1273,11 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
                   aria-label="Message subject"
                 />
               </label>
-
-              <div className="mail-compose-field">
-                <span>Attachments</span>
-                <div className="mail-compose-attachment-controls">
-                  <button
-                    type="button"
-                    className="mail-compose-attachment-button"
-                    onClick={() => newMessageFileInputRef.current?.click()}
-                  >
-                    <Paperclip size={14} />
-                    Add image
-                  </button>
-                  <input
-                    ref={newMessageFileInputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    hidden
-                    onChange={handleNewMessageAttachments}
-                  />
-                  <span className="muted">
-                    PNG, JPEG, GIF, and WebP image files
-                  </span>
+              <div className="mail-compose-row mail-compose-row-static">
+                <span>From:</span>
+                <div className="mail-compose-static-value">
+                  {accountLabel}
+                  {session?.account_email ? ` - ${session.account_email}` : ""}
                 </div>
               </div>
 
@@ -1303,8 +1319,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
                 </div>
               ) : null}
 
-              <label className="mail-compose-field">
-                <span>Message</span>
+              <label className="mail-compose-body-wrap">
                 <textarea
                   value={newMessageBody}
                   onChange={(event) => setNewMessageBody(event.target.value)}
@@ -1315,26 +1330,26 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
               </label>
             </div>
 
-            <div className="overlay-actions">
-              <button
-                type="button"
-                onClick={closeNewMessageComposer}
-                disabled={sendingNewMessage}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => void sendNewMessage()}
-                disabled={
-                  sendingNewMessage ||
-                  parseRecipients(newMessageTo).length === 0 ||
-                  !newMessageSubject.trim()
-                }
-              >
-                {sendingNewMessage ? "Sending..." : "Send"}
-              </button>
+            <div className="mail-compose-footer">
+              <div className="mail-compose-attachment-controls">
+                <button
+                  type="button"
+                  className="mail-compose-attachment-button"
+                  onClick={() => newMessageFileInputRef.current?.click()}
+                >
+                  <Paperclip size={14} />
+                  Attach Image
+                </button>
+                <input
+                  ref={newMessageFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  hidden
+                  onChange={handleNewMessageAttachments}
+                />
+                <span className="muted">PNG, JPEG, GIF, and WebP</span>
+              </div>
             </div>
           </div>
         </div>
