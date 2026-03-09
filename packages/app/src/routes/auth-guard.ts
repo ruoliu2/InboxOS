@@ -27,7 +27,10 @@ export async function getAuthSessionStatus(): Promise<AuthSessionStatus> {
     });
 
     if (!response.ok) {
-      return { authenticated: false, uncertain: true };
+      return {
+        authenticated: false,
+        uncertain: response.status >= 500,
+      };
     }
 
     const session = (await response.json()) as { authenticated: boolean };
