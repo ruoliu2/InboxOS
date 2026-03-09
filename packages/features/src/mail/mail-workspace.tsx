@@ -42,7 +42,6 @@ import {
   ThreadListItem,
   ThreadMessage,
   ThreadSummary,
-  ThreadSummaryPage,
 } from "@inboxos/types";
 import { ConfirmDialog } from "@inboxos/ui/confirm-dialog";
 import { OverflowMenu } from "@inboxos/ui/overflow-menu";
@@ -56,8 +55,6 @@ import {
 type ListTab = "all" | "unread";
 
 type MailWorkspaceProps = {
-  initialSession?: AuthSessionResponse | null;
-  initialThreadPage?: ThreadSummaryPage | null;
   initialThreadId?: string | null;
 };
 
@@ -279,20 +276,12 @@ function buildSkeletonRows(count = 6): ThreadListItem[] {
   }));
 }
 
-export function MailWorkspace({
-  initialSession,
-  initialThreadPage,
-  initialThreadId,
-}: MailWorkspaceProps) {
-  const [session, setSession] = useState<AuthSessionResponse | null>(
-    initialSession ?? null,
-  );
-  const [sessionChecked, setSessionChecked] = useState(Boolean(initialSession));
+export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
+  const [session, setSession] = useState<AuthSessionResponse | null>(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [mailboxCounts, setMailboxCounts] =
     useState<MailboxCounts>(EMPTY_MAILBOX_COUNTS);
-  const [threads, setThreads] = useState<ThreadListItem[]>(
-    initialThreadPage?.threads ?? [],
-  );
+  const [threads, setThreads] = useState<ThreadListItem[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(
     initialThreadId ?? null,
   );
@@ -310,17 +299,15 @@ export function MailWorkspace({
   const [forwardBcc, setForwardBcc] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loadingList, setLoadingList] = useState(!initialThreadPage);
+  const [loadingList, setLoadingList] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadingThread, setLoadingThread] = useState(false);
   const [sendingCompose, setSendingCompose] = useState(false);
   const [actionInFlight, setActionInFlight] = useState<ThreadActionName | null>(
     null,
   );
-  const [nextPageToken, setNextPageToken] = useState<string | null>(
-    initialThreadPage?.next_page_token ?? null,
-  );
-  const [hasMore, setHasMore] = useState(initialThreadPage?.has_more ?? false);
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [confirmState, setConfirmState] = useState<ConfirmState>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [newMessageOpen, setNewMessageOpen] = useState(false);
@@ -341,7 +328,6 @@ export function MailWorkspace({
   const hydrationEpochRef = useRef(0);
   const hydratedIdsRef = useRef<Set<string>>(new Set());
   const hydratingIdsRef = useRef<Set<string>>(new Set());
-  const bootstrappedListRef = useRef(Boolean(initialThreadPage));
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const listScrollerRef = useRef<HTMLDivElement | null>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
@@ -356,14 +342,6 @@ export function MailWorkspace({
 
   const unreadOnly = listTab === "unread";
   const activeHeading = mailboxHeading(mailbox);
-
-  useEffect(() => {
-    for (const thread of initialThreadPage?.threads ?? []) {
-      if (thread.state === "ready") {
-        hydratedIdsRef.current.add(thread.id);
-      }
-    }
-  }, [initialThreadPage?.threads]);
 
   const loadMailboxCounts = useCallback(async () => {
     if (!session?.authenticated) {
@@ -545,10 +523,6 @@ export function MailWorkspace({
   }, []);
 
   useEffect(() => {
-    if (initialSession) {
-      return;
-    }
-
     let isMounted = true;
 
     async function loadSession() {
@@ -577,7 +551,7 @@ export function MailWorkspace({
     return () => {
       isMounted = false;
     };
-  }, [initialSession]);
+  }, []);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -604,18 +578,6 @@ export function MailWorkspace({
     setSelectedThread(null);
     setShowMoreMenu(false);
     resetHydration();
-
-    if (
-      bootstrappedListRef.current &&
-      mailbox === "inbox" &&
-      !unreadOnly &&
-      !searchQuery
-    ) {
-      bootstrappedListRef.current = false;
-      return;
-    }
-
-    bootstrappedListRef.current = false;
     void loadInitialThreads();
   }, [
     loadInitialThreads,
