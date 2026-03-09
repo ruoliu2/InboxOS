@@ -488,16 +488,12 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   }, [loadInitialThreads, session?.authenticated, sessionChecked]);
 
   useEffect(() => {
-    if (sendingNewMessage) {
-      return;
-    }
     setComposeMode("reply");
     setComposeBody("");
     setForwardTo("");
     setForwardCc("");
     setForwardBcc("");
-    clearNewMessageComposer();
-  }, [clearNewMessageComposer, selectedThreadId, sendingNewMessage]);
+  }, [selectedThreadId]);
 
   useEffect(() => {
     if (!selectedThreadId) {
