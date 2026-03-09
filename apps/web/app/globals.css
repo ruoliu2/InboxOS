@@ -792,10 +792,12 @@ textarea {
 .mail-compose-toolbar-button {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 6px;
   width: auto;
   min-width: 0;
-  padding: 8px 12px;
+  min-height: 34px;
+  padding: 8px 10px;
   border-radius: 999px;
   border: 1px solid #e5e7eb;
   background: #fff;
@@ -822,10 +824,11 @@ textarea {
 .mail-compose-send-button {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
   width: auto;
-  min-width: 92px;
-  padding: 8px 14px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 8px 10px;
   font-size: 0.82rem;
   box-shadow: none;
   border-radius: 999px;

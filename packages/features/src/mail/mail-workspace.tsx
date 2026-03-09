@@ -1270,9 +1270,10 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
                   type="button"
                   className="mail-compose-toolbar-button"
                   onClick={() => newMessageFileInputRef.current?.click()}
+                  aria-label="Attach files"
+                  title="Attach files"
                 >
                   <Paperclip size={14} />
-                  <span>Attach files</span>
                 </button>
                 <div className="mail-compose-schedule-wrap">
                   <button
@@ -1281,9 +1282,10 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
                     onClick={() => setScheduleMenuOpen((current) => !current)}
                     aria-haspopup="menu"
                     aria-expanded={scheduleMenuOpen}
+                    aria-label="Schedule send"
+                    title="Schedule send"
                   >
                     <Clock size={14} />
-                    <span>Schedule send</span>
                     <ChevronDown size={14} />
                   </button>
                   {scheduleMenuOpen ? (
@@ -1330,9 +1332,10 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
                   className="mail-compose-send-button"
                   onClick={() => void sendNewMessage()}
                   disabled={!canSendNewMessage}
+                  aria-label={sendingNewMessage ? "Sending" : "Send"}
+                  title={sendingNewMessage ? "Sending" : "Send"}
                 >
                   <Send size={15} />
-                  <span>{sendingNewMessage ? "Sending..." : "Send"}</span>
                 </button>
               </div>
             </div>
@@ -1345,7 +1348,6 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
                     ref={newMessageToRef}
                     value={newMessageTo}
                     onChange={(event) => setNewMessageTo(event.target.value)}
-                    placeholder="name@example.com"
                     aria-label="Message recipients"
                   />
                 </label>
@@ -1356,7 +1358,6 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
                     onChange={(event) =>
                       setNewMessageSubject(event.target.value)
                     }
-                    placeholder="Subject"
                     aria-label="Message subject"
                   />
                 </label>
@@ -1413,7 +1414,6 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
                     value={newMessageBody}
                     onChange={(event) => setNewMessageBody(event.target.value)}
                     className="mail-compose-body"
-                    placeholder="Write your message..."
                     aria-label="Message body"
                   />
                 </label>
