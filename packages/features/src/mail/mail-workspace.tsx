@@ -26,6 +26,7 @@ import {
   Send,
   Trash2,
   Triangle,
+  X,
 } from "lucide-react";
 
 import { api } from "@inboxos/lib/api";
