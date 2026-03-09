@@ -1,5 +1,7 @@
 export type ActionState = "to_reply" | "to_follow_up" | "task" | "fyi";
 export type TaskStatus = "open" | "completed";
+export type TaskOrigin = "manual" | "agent";
+export type DeadlineSource = "explicit" | "fallback_7d";
 export type MailboxKey = "inbox" | "sent" | "archive" | "trash" | "junk";
 export type ComposeMode = "reply" | "reply_all" | "forward";
 export type ThreadActionName =
@@ -39,6 +41,11 @@ export type ThreadInlineAsset = {
   data_url: string;
 };
 
+export type ActionViewCounts = {
+  to_reply: number;
+  to_follow_up: number;
+};
+
 export type ThreadMessage = {
   id: string;
   sender: string;
@@ -48,10 +55,26 @@ export type ThreadMessage = {
   inline_assets: ThreadInlineAsset[];
 };
 
+export type ExtractedDeadline = {
+  title: string;
+  due_at: string;
+  source_message_id: string | null;
+  is_date_only: boolean;
+};
+
+export type ExtractedTask = {
+  title: string;
+  category: string | null;
+  due_at: string;
+  deadline_source: DeadlineSource;
+  source_message_id: string | null;
+};
+
 export type ThreadAnalysis = {
   summary: string;
   action_items: string[];
-  deadlines: string[];
+  deadlines: ExtractedDeadline[];
+  extracted_tasks: ExtractedTask[];
   requested_items: string[];
   recommended_next_action: string;
   action_states: ActionState[];
@@ -103,6 +126,9 @@ export type TaskItem = {
   conversation_id: string | null;
   thread_id: string | null;
   category: string | null;
+  origin: TaskOrigin;
+  origin_key: string | null;
+  deadline_source: DeadlineSource | null;
   created_at: string;
   completed_at: string | null;
 };
@@ -162,6 +188,9 @@ export type CreateTaskRequest = {
   conversation_id?: string | null;
   thread_id?: string | null;
   category?: string | null;
+  origin?: TaskOrigin;
+  origin_key?: string | null;
+  deadline_source?: DeadlineSource | null;
 };
 
 export type CreateCalendarEventRequest = {

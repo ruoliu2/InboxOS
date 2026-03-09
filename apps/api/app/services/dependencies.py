@@ -4,8 +4,10 @@ from fastapi import Depends, HTTPException, Request, Response
 
 from app.core.config import get_settings
 from app.integrations.google_workspace import GoogleWorkspaceClient
+from app.integrations.openai_compatible import OpenAICompatibleClient
 from app.services.auth_service import AuthService
 from app.services.task_service import TaskService
+from app.services.thread_analysis_service import ThreadAnalysisService
 from app.storage.auth_store import AuthSessionRecord, AuthStore, build_auth_store
 from app.storage.conversation_store import ConversationStore, build_conversation_store
 from app.storage.mailbox_cache import GmailMailboxCache
@@ -25,6 +27,20 @@ def get_conversation_store() -> ConversationStore:
 @lru_cache
 def get_task_service() -> TaskService:
     return TaskService(get_task_store(), get_conversation_store())
+
+
+@lru_cache
+def get_openai_compatible_client() -> OpenAICompatibleClient:
+    return OpenAICompatibleClient(get_settings())
+
+
+@lru_cache
+def get_thread_analysis_service() -> ThreadAnalysisService:
+    return ThreadAnalysisService(
+        get_openai_compatible_client(),
+        get_conversation_store(),
+        get_task_store(),
+    )
 
 
 @lru_cache

@@ -1,5 +1,7 @@
 import { API_BASE } from "@inboxos/config/web";
 import {
+  ActionState,
+  ActionViewCounts,
   LinkedAccount,
   AuthSessionResponse,
   AuthStartResponse,
@@ -88,12 +90,14 @@ export const api = {
   getSession: () => request<AuthSessionResponse>("/auth/session"),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   getGmailMailboxCounts: () => request<MailboxCounts>("/gmail/mailbox-counts"),
+  getGmailActionCounts: () => request<ActionViewCounts>("/gmail/action-counts"),
   getGmailThreads: (options?: {
     page_token?: string | null;
     page_size?: number;
     q?: string;
     mailbox?: MailboxKey;
     unread_only?: boolean;
+    action_state?: Extract<ActionState, "to_reply" | "to_follow_up">;
   }) => {
     const params = new URLSearchParams();
     if (options?.page_token) {
@@ -110,6 +114,9 @@ export const api = {
     }
     if (options?.unread_only) {
       params.set("unread_only", "true");
+    }
+    if (options?.action_state) {
+      params.set("action_state", options.action_state);
     }
 
     const query = params.toString();

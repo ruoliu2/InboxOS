@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     gmail_cache_db_path: str = str(
         Path.home() / ".cache" / "inboxos" / "gmail_mailbox_cache.sqlite3"
     )
+    llm_base_url: str = "https://openrouter.ai/api/v1"
+    llm_api_key: str | None = None
+    llm_model: str = "openai/gpt-4o-mini"
+    llm_timeout_seconds: float = 10.0
+    llm_http_referer: str | None = None
+    llm_app_name: str = "InboxOS"
     database_url: str = Field(
         default=f"sqlite:///{Path.home() / '.cache' / 'inboxos' / 'app.sqlite3'}",
         validation_alias=AliasChoices("DATABASE_URL", "TASKS_DATABASE_URL"),

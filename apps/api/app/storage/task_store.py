@@ -20,6 +20,10 @@ class TaskStore(Protocol):
 
     def get_task(self, user_id: str, task_id: str) -> TaskItem | None: ...
 
+    def get_task_by_origin_key(
+        self, user_id: str, origin_key: str
+    ) -> TaskItem | None: ...
+
     def upsert_task(self, user_id: str, task: TaskItem) -> None: ...
 
     def clear(self) -> None: ...
@@ -42,7 +46,8 @@ class SQLiteTaskStore:
             rows = connection.execute(
                 """
                 SELECT id, title, status, due_at, linked_account_id, conversation_id,
-                       thread_id, category, created_at, completed_at
+                       thread_id, category, origin, origin_key, deadline_source,
+                       created_at, completed_at
                 FROM tasks
                 WHERE user_id = ?
                 ORDER BY created_at DESC
@@ -56,11 +61,28 @@ class SQLiteTaskStore:
             row = connection.execute(
                 """
                 SELECT id, title, status, due_at, linked_account_id, conversation_id,
-                       thread_id, category, created_at, completed_at
+                       thread_id, category, origin, origin_key, deadline_source,
+                       created_at, completed_at
                 FROM tasks
                 WHERE user_id = ? AND id = ?
                 """,
                 (user_id, task_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._row_to_task(row)
+
+    def get_task_by_origin_key(self, user_id: str, origin_key: str) -> TaskItem | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, title, status, due_at, linked_account_id, conversation_id,
+                       thread_id, category, origin, origin_key, deadline_source,
+                       created_at, completed_at
+                FROM tasks
+                WHERE user_id = ? AND origin_key = ?
+                """,
+                (user_id, origin_key),
             ).fetchone()
         if row is None:
             return None
@@ -80,10 +102,13 @@ class SQLiteTaskStore:
                     conversation_id,
                     thread_id,
                     category,
+                    origin,
+                    origin_key,
+                    deadline_source,
                     created_at,
                     completed_at,
                     updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     user_id = excluded.user_id,
                     title = excluded.title,
@@ -93,6 +118,9 @@ class SQLiteTaskStore:
                     conversation_id = excluded.conversation_id,
                     thread_id = excluded.thread_id,
                     category = excluded.category,
+                    origin = excluded.origin,
+                    origin_key = excluded.origin_key,
+                    deadline_source = excluded.deadline_source,
                     created_at = excluded.created_at,
                     completed_at = excluded.completed_at,
                     updated_at = excluded.updated_at
@@ -107,6 +135,9 @@ class SQLiteTaskStore:
                     task.conversation_id,
                     task.thread_id,
                     task.category,
+                    task.origin,
+                    task.origin_key,
+                    task.deadline_source,
                     task.created_at.isoformat(),
                     self._serialize_datetime(task.completed_at),
                     datetime.now().astimezone().isoformat(),
@@ -133,6 +164,9 @@ class SQLiteTaskStore:
                     conversation_id TEXT,
                     thread_id TEXT,
                     category TEXT,
+                    origin TEXT NOT NULL DEFAULT 'manual',
+                    origin_key TEXT,
+                    deadline_source TEXT,
                     created_at TEXT NOT NULL,
                     completed_at TEXT,
                     updated_at TEXT NOT NULL
@@ -157,6 +191,21 @@ class SQLiteTaskStore:
             }
             if "thread_id" not in columns:
                 connection.execute("ALTER TABLE tasks ADD COLUMN thread_id TEXT")
+            if "origin" not in columns:
+                connection.execute(
+                    "ALTER TABLE tasks ADD COLUMN origin TEXT NOT NULL DEFAULT 'manual'"
+                )
+            if "origin_key" not in columns:
+                connection.execute("ALTER TABLE tasks ADD COLUMN origin_key TEXT")
+            if "deadline_source" not in columns:
+                connection.execute("ALTER TABLE tasks ADD COLUMN deadline_source TEXT")
+            connection.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_user_origin_key
+                ON tasks (user_id, origin_key)
+                WHERE origin = 'agent' AND origin_key IS NOT NULL
+                """
+            )
             connection.commit()
 
     @contextmanager
@@ -178,6 +227,9 @@ class SQLiteTaskStore:
             conversation_id=row["conversation_id"],
             thread_id=row["thread_id"],
             category=row["category"],
+            origin=row["origin"] or "manual",
+            origin_key=row["origin_key"],
+            deadline_source=row["deadline_source"],
             created_at=self._parse_datetime(row["created_at"]),
             completed_at=self._parse_optional_datetime(row["completed_at"]),
         )
@@ -204,8 +256,8 @@ class PostgresTaskStore:
                 cursor.execute(
                     """
                     SELECT id, title, status, due_at, linked_account_id,
-                           conversation_id, thread_id, category, created_at,
-                           completed_at
+                           conversation_id, thread_id, category, origin,
+                           origin_key, deadline_source, created_at, completed_at
                     FROM tasks
                     WHERE user_id = %s
                     ORDER BY created_at DESC
@@ -221,12 +273,30 @@ class PostgresTaskStore:
                 cursor.execute(
                     """
                     SELECT id, title, status, due_at, linked_account_id,
-                           conversation_id, thread_id, category, created_at,
-                           completed_at
+                           conversation_id, thread_id, category, origin,
+                           origin_key, deadline_source, created_at, completed_at
                     FROM tasks
                     WHERE user_id = %s AND id = %s
                     """,
                     (user_id, task_id),
+                )
+                row = cursor.fetchone()
+        if row is None:
+            return None
+        return self._row_to_task(row)
+
+    def get_task_by_origin_key(self, user_id: str, origin_key: str) -> TaskItem | None:
+        with self._lock, self._connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, title, status, due_at, linked_account_id,
+                           conversation_id, thread_id, category, origin,
+                           origin_key, deadline_source, created_at, completed_at
+                    FROM tasks
+                    WHERE user_id = %s AND origin_key = %s
+                    """,
+                    (user_id, origin_key),
                 )
                 row = cursor.fetchone()
         if row is None:
@@ -248,10 +318,13 @@ class PostgresTaskStore:
                         conversation_id,
                         thread_id,
                         category,
+                        origin,
+                        origin_key,
+                        deadline_source,
                         created_at,
                         completed_at,
                         updated_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO UPDATE SET
                         user_id = excluded.user_id,
                         title = excluded.title,
@@ -261,6 +334,9 @@ class PostgresTaskStore:
                         conversation_id = excluded.conversation_id,
                         thread_id = excluded.thread_id,
                         category = excluded.category,
+                        origin = excluded.origin,
+                        origin_key = excluded.origin_key,
+                        deadline_source = excluded.deadline_source,
                         created_at = excluded.created_at,
                         completed_at = excluded.completed_at,
                         updated_at = excluded.updated_at
@@ -275,6 +351,9 @@ class PostgresTaskStore:
                         task.conversation_id,
                         task.thread_id,
                         task.category,
+                        task.origin,
+                        task.origin_key,
+                        task.deadline_source,
                         task.created_at,
                         task.completed_at,
                         datetime.now().astimezone(),
@@ -303,6 +382,9 @@ class PostgresTaskStore:
                         conversation_id TEXT NULL,
                         thread_id TEXT NULL,
                         category TEXT NULL,
+                        origin TEXT NOT NULL DEFAULT 'manual',
+                        origin_key TEXT NULL,
+                        deadline_source TEXT NULL,
                         created_at TIMESTAMPTZ NOT NULL,
                         completed_at TIMESTAMPTZ NULL,
                         updated_at TIMESTAMPTZ NOT NULL
@@ -317,6 +399,24 @@ class PostgresTaskStore:
                 )
                 cursor.execute(
                     """
+                    ALTER TABLE tasks
+                    ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT 'manual'
+                    """
+                )
+                cursor.execute(
+                    """
+                    ALTER TABLE tasks
+                    ADD COLUMN IF NOT EXISTS origin_key TEXT NULL
+                    """
+                )
+                cursor.execute(
+                    """
+                    ALTER TABLE tasks
+                    ADD COLUMN IF NOT EXISTS deadline_source TEXT NULL
+                    """
+                )
+                cursor.execute(
+                    """
                     CREATE INDEX IF NOT EXISTS idx_tasks_user_created
                     ON tasks (user_id, created_at DESC)
                     """
@@ -325,6 +425,13 @@ class PostgresTaskStore:
                     """
                     CREATE INDEX IF NOT EXISTS idx_tasks_user_conversation_status
                     ON tasks (user_id, conversation_id, status)
+                    """
+                )
+                cursor.execute(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_user_origin_key
+                    ON tasks (user_id, origin_key)
+                    WHERE origin = 'agent' AND origin_key IS NOT NULL
                     """
                 )
             connection.commit()
@@ -347,6 +454,9 @@ class PostgresTaskStore:
             conversation_id=row["conversation_id"],
             thread_id=row["thread_id"],
             category=row["category"],
+            origin=str(row["origin"] or "manual"),
+            origin_key=row["origin_key"],
+            deadline_source=row["deadline_source"],
             created_at=row["created_at"],
             completed_at=row["completed_at"],
         )

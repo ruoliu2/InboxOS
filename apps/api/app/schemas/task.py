@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.schemas.common import TaskStatus
+from app.schemas.common import DeadlineSource, TaskOrigin, TaskStatus
 
 
 class CreateTaskRequest(BaseModel):
@@ -12,6 +12,9 @@ class CreateTaskRequest(BaseModel):
     linked_account_id: str | None = None
     thread_id: str | None = None
     category: str | None = None
+    origin: TaskOrigin = TaskOrigin.MANUAL
+    origin_key: str | None = None
+    deadline_source: DeadlineSource | None = None
 
 
 class TaskItem(BaseModel):
@@ -23,6 +26,9 @@ class TaskItem(BaseModel):
     conversation_id: str | None = None
     thread_id: str | None = None
     category: str | None = None
+    origin: TaskOrigin = TaskOrigin.MANUAL
+    origin_key: str | None = None
+    deadline_source: DeadlineSource | None = None
     created_at: datetime
     completed_at: datetime | None = None
 

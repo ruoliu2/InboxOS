@@ -14,8 +14,10 @@ from app.services.dependencies import (
     get_conversation_store,
     get_gmail_mailbox_cache,
     get_google_workspace_client,
+    get_openai_compatible_client,
     get_task_service,
     get_task_store,
+    get_thread_analysis_service,
 )
 from app.storage.auth_store import AuthSessionRecord
 
@@ -45,8 +47,10 @@ def reset_store_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     get_conversation_store.cache_clear()
     get_gmail_mailbox_cache.cache_clear()
     get_google_workspace_client.cache_clear()
+    get_openai_compatible_client.cache_clear()
     get_task_store.cache_clear()
     get_task_service.cache_clear()
+    get_thread_analysis_service.cache_clear()
     get_auth_store().clear()
     get_conversation_store().clear()
     get_gmail_mailbox_cache().clear()
@@ -57,8 +61,10 @@ def reset_store_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     get_conversation_store.cache_clear()
     get_gmail_mailbox_cache.cache_clear()
     get_google_workspace_client.cache_clear()
+    get_openai_compatible_client.cache_clear()
     get_task_store.cache_clear()
     get_task_service.cache_clear()
+    get_thread_analysis_service.cache_clear()
     get_settings.cache_clear()
 
 

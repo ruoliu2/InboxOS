@@ -3,7 +3,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.schemas.common import ActionState
+from app.schemas.common import ActionState, DeadlineSource
 
 
 class ThreadInlineAsset(BaseModel):
@@ -53,10 +53,31 @@ class MailboxKey(StrEnum):
     JUNK = "junk"
 
 
+class ActionViewCountsResponse(BaseModel):
+    to_reply: int = 0
+    to_follow_up: int = 0
+
+
+class ExtractedDeadline(BaseModel):
+    title: str
+    due_at: datetime
+    source_message_id: str | None = None
+    is_date_only: bool = False
+
+
+class ExtractedTask(BaseModel):
+    title: str
+    category: str | None = None
+    due_at: datetime
+    deadline_source: DeadlineSource
+    source_message_id: str | None = None
+
+
 class ThreadAnalysis(BaseModel):
     summary: str
     action_items: list[str] = Field(default_factory=list)
-    deadlines: list[str] = Field(default_factory=list)
+    deadlines: list[ExtractedDeadline] = Field(default_factory=list)
+    extracted_tasks: list[ExtractedTask] = Field(default_factory=list)
     requested_items: list[str] = Field(default_factory=list)
     recommended_next_action: str
     action_states: list[ActionState] = Field(default_factory=list)
