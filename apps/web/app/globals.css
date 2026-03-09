@@ -709,21 +709,33 @@ textarea {
 
 .mail-compose-modal {
   width: min(1120px, calc(100vw - 32px));
-  height: min(640px, calc(100vh - 40px));
+  height: min(620px, calc(100vh - 40px));
   min-width: 860px;
-  min-height: 500px;
+  min-height: 84px;
   max-width: calc(100vw - 24px);
   max-height: calc(100vh - 24px);
-  border-radius: 18px;
+  border-radius: 16px;
   padding: 0;
   overflow: hidden;
   gap: 0;
   resize: both;
 }
 
+.mail-compose-modal.maximized {
+  width: calc(100vw - 24px);
+  height: calc(100vh - 24px);
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+}
+
+.mail-compose-modal.minimized {
+  height: auto;
+  resize: horizontal;
+}
+
 .mail-compose-form {
   display: grid;
-  grid-template-rows: auto auto auto auto auto minmax(260px, 1fr);
+  grid-template-rows: auto auto auto minmax(0, auto) minmax(260px, 1fr);
   min-height: 0;
 }
 
@@ -732,9 +744,9 @@ textarea {
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 12px;
-  padding: 14px 18px;
+  padding: 12px 16px;
   border-bottom: 1px solid #e5e7eb;
-  background: #f7f7f8;
+  background: #fff;
 }
 
 .mail-compose-window-controls {
@@ -748,6 +760,9 @@ textarea {
   height: 12px;
   border-radius: 999px;
   display: inline-block;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
 }
 
 .mail-compose-window-dot.close {
@@ -762,34 +777,71 @@ textarea {
   background: #28c840;
 }
 
-.mail-compose-title-wrap {
-  text-align: center;
+.mail-compose-window-dot:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
-.mail-compose-title-wrap h2 {
-  margin: 0;
-  font-size: 0.98rem;
-  font-weight: 600;
+.mail-compose-toolbar-group {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
 }
 
-.mail-compose-title-wrap p {
-  margin: 2px 0 0;
-  color: #6b7280;
-  font-size: 0.76rem;
+.mail-compose-toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  box-shadow: none;
+  font-size: 0.82rem;
+  color: #111827;
+}
+
+.mail-compose-toolbar-button:hover {
+  background: #f8fafc;
+}
+
+.mail-compose-schedule-wrap {
+  position: relative;
 }
 
 .mail-compose-topbar-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
 }
 
-.mail-compose-topbar-actions button {
+.mail-compose-send-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   width: auto;
-  min-width: 72px;
-  padding: 7px 14px;
+  min-width: 92px;
+  padding: 8px 14px;
   font-size: 0.82rem;
   box-shadow: none;
+  border-radius: 999px;
+  border: 1px solid #111827;
+  background: #111827;
+  color: #fff;
+}
+
+.mail-compose-send-button:hover {
+  background: #000;
+}
+
+.mail-compose-send-button:disabled {
+  border-color: #d1d5db;
+  background: #e5e7eb;
+  color: #6b7280;
 }
 
 .mail-compose-row {
@@ -831,16 +883,6 @@ textarea {
   font-size: 0.86rem;
 }
 
-.mail-compose-utility-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 22px;
-  border-bottom: 1px solid #ececec;
-  background: #fbfbfb;
-}
-
 .mail-compose-attachments {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -849,7 +891,7 @@ textarea {
   overflow: auto;
   padding: 12px 22px;
   border-bottom: 1px solid #ececec;
-  background: #fcfcfc;
+  background: #fff;
 }
 
 .mail-compose-body-wrap {
@@ -912,23 +954,6 @@ textarea {
   outline: none;
 }
 
-.mail-compose-attachment-controls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.mail-compose-attachment-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  width: auto;
-  padding: 7px 12px;
-  font-size: 0.82rem;
-  box-shadow: none;
-}
-
 .mail-compose-attachment-remove {
   width: 28px;
   height: 28px;
@@ -937,6 +962,35 @@ textarea {
   display: grid;
   place-items: center;
   box-shadow: none;
+}
+
+.mail-compose-schedule-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 220px;
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.12);
+  z-index: 5;
+}
+
+.mail-compose-schedule-menu button {
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  box-shadow: none;
+}
+
+.mail-compose-schedule-menu button:hover {
+  background: #f4f4f5;
 }
 
 @media (max-width: 960px) {
@@ -948,22 +1002,19 @@ textarea {
     resize: none;
   }
 
-  .mail-compose-utility-row {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
   .mail-compose-topbar {
     grid-template-columns: 1fr;
     justify-items: start;
   }
 
-  .mail-compose-title-wrap {
-    text-align: left;
+  .mail-compose-toolbar-group {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .mail-compose-topbar-actions {
     justify-self: stretch;
+    justify-content: flex-start;
   }
 
   .mail-compose-row {
