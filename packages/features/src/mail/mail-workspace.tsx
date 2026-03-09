@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Archive,
   ArchiveX,
-  ChevronDown,
   Clock,
   Forward,
   Inbox,
@@ -24,8 +23,10 @@ import { formatDate } from "@inboxos/lib/format";
 import {
   AuthSessionResponse,
   ComposeMode,
+  LinkedAccount,
   MailboxCounts,
   MailboxKey,
+  MailboxScope,
   ThreadActionName,
   ThreadDetail,
   ThreadMessage,
@@ -41,6 +42,8 @@ type ListTab = "all" | "unread";
 type MailWorkspaceProps = {
   initialThreadId?: string | null;
 };
+
+type MailScope = MailboxScope;
 
 type ConfirmState = {
   title: string;
@@ -156,6 +159,20 @@ function mailboxHeading(value: MailboxKey): string {
   );
 }
 
+function accountScopeLabel(account: LinkedAccount): string {
+  return (
+    account.provider_account_ref || account.display_name || "Google account"
+  );
+}
+
+function activeLinkedAccounts(
+  session: AuthSessionResponse | null,
+): LinkedAccount[] {
+  return (session?.linked_accounts ?? []).filter(
+    (account) => account.status === "active",
+  );
+}
+
 function toThreadSummary(thread: ThreadDetail): ThreadSummary {
   return {
     id: thread.id,
@@ -164,6 +181,9 @@ function toThreadSummary(thread: ThreadDetail): ThreadSummary {
     participants: thread.participants,
     last_message_at: thread.last_message_at,
     action_states: thread.action_states,
+    linked_account_id: thread.linked_account_id,
+    account_email: thread.account_email,
+    account_name: thread.account_name,
   };
 }
 
@@ -205,8 +225,10 @@ function hasHtmlPreview(message: ThreadMessage): boolean {
 export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   const [session, setSession] = useState<AuthSessionResponse | null>(null);
   const [sessionChecked, setSessionChecked] = useState(false);
-  const [mailboxCounts, setMailboxCounts] =
-    useState<MailboxCounts>(EMPTY_MAILBOX_COUNTS);
+  const [selectedScope, setSelectedScope] = useState<MailScope>("all");
+  const [mailboxCountsByScope, setMailboxCountsByScope] = useState<
+    Record<string, MailboxCounts>
+  >({ all: EMPTY_MAILBOX_COUNTS });
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(
     initialThreadId ?? null,
@@ -242,7 +264,17 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const unreadOnly = listTab === "unread";
+  const linkedAccounts = activeLinkedAccounts(session);
+  const selectedScopeAccount =
+    selectedScope === "all"
+      ? null
+      : (linkedAccounts.find((account) => account.id === selectedScope) ??
+        null);
   const activeHeading = mailboxHeading(mailbox);
+  const activeScopeHeading =
+    selectedScopeAccount?.provider_account_ref ??
+    selectedScopeAccount?.display_name ??
+    "All Accounts";
 
   const loadMailboxCounts = useCallback(async () => {
     if (!session?.authenticated) {
@@ -250,12 +282,20 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     }
 
     try {
-      const counts = await api.getGmailMailboxCounts();
-      setMailboxCounts(counts);
+      const scopes = ["all", ...linkedAccounts.map((account) => account.id)];
+      const entries = await Promise.all(
+        scopes.map(async (scope) => [
+          scope,
+          await api.getGmailMailboxCounts(scope),
+        ]),
+      );
+      setMailboxCountsByScope(Object.fromEntries(entries));
     } catch {
-      setMailboxCounts(EMPTY_MAILBOX_COUNTS);
+      setMailboxCountsByScope({
+        all: EMPTY_MAILBOX_COUNTS,
+      });
     }
-  }, [session?.authenticated]);
+  }, [linkedAccounts, session?.authenticated]);
 
   const loadInitialThreads = useCallback(async () => {
     if (!session?.authenticated) {
@@ -271,6 +311,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
         page_size: PAGE_SIZE,
         q: searchQuery || undefined,
         mailbox,
+        scope: selectedScope,
         unread_only: unreadOnly,
       });
       setThreads(page.threads);
@@ -287,7 +328,14 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     } finally {
       setLoadingList(false);
     }
-  }, [activeHeading, mailbox, searchQuery, session?.authenticated, unreadOnly]);
+  }, [
+    activeHeading,
+    mailbox,
+    searchQuery,
+    selectedScope,
+    session?.authenticated,
+    unreadOnly,
+  ]);
 
   const loadMoreThreads = useCallback(async () => {
     if (
@@ -309,6 +357,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
         page_size: PAGE_SIZE,
         q: searchQuery || undefined,
         mailbox,
+        scope: selectedScope,
         unread_only: unreadOnly,
       });
       setThreads((current) => mergeThreadSummaries(current, page.threads));
@@ -325,6 +374,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     mailbox,
     nextPageToken,
     searchQuery,
+    selectedScope,
     session?.authenticated,
     unreadOnly,
   ]);
@@ -375,6 +425,18 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     }
     void loadMailboxCounts();
   }, [loadMailboxCounts, session?.authenticated, sessionChecked]);
+
+  useEffect(() => {
+    if (!sessionChecked || !session?.authenticated) {
+      return;
+    }
+    if (
+      selectedScope !== "all" &&
+      !linkedAccounts.some((account) => account.id === selectedScope)
+    ) {
+      setSelectedScope("all");
+    }
+  }, [linkedAccounts, selectedScope, session?.authenticated, sessionChecked]);
 
   useEffect(() => {
     if (!sessionChecked || !session?.authenticated) {
@@ -466,13 +528,6 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     selectedThread && selectedThread.id === selectedThreadId
       ? selectedThread
       : null;
-
-  const accountLabel =
-    session?.account_name ??
-    session?.user?.display_name ??
-    session?.account_email ??
-    session?.user?.primary_email ??
-    "Google account";
 
   function focusComposer(mode: ComposeMode) {
     setComposeMode(mode);
@@ -620,7 +675,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     try {
       await api.logout();
     } finally {
-      setMailboxCounts(EMPTY_MAILBOX_COUNTS);
+      setMailboxCountsByScope({ all: EMPTY_MAILBOX_COUNTS });
       window.location.href = "/auth";
     }
   }
@@ -629,24 +684,26 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     <>
       <main className="mail-shell panel-surface">
         <aside className="mail-left-nav">
-          <div className="mail-account-select">
-            <span className="account-logo" aria-hidden>
-              <Triangle size={11} />
-            </span>
-            <span className="account-name">{accountLabel}</span>
-            <span className="account-caret" aria-hidden>
-              <ChevronDown size={14} />
-            </span>
+          <div className="mail-sidebar-heading">
+            <strong>Mailboxes</strong>
+            <span>{linkedAccounts.length} active account(s)</span>
           </div>
 
           <div className="mail-folder-group">
             {primaryFolders.map((folder) => {
-              const count = mailboxCounts[folder.key];
+              const count = mailboxCountsByScope.all?.[folder.key] ?? null;
               return (
                 <button
-                  key={folder.key}
-                  className={`folder-row ${folder.key === mailbox ? "active" : ""}`.trim()}
-                  onClick={() => setMailbox(folder.key)}
+                  key={`all-${folder.key}`}
+                  className={`folder-row ${
+                    folder.key === mailbox && selectedScope === "all"
+                      ? "active"
+                      : ""
+                  }`.trim()}
+                  onClick={() => {
+                    setSelectedScope("all");
+                    setMailbox(folder.key);
+                  }}
                   type="button"
                 >
                   <span className="folder-label">
@@ -661,9 +718,51 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
             })}
           </div>
 
+          {linkedAccounts.map((account) => {
+            const counts =
+              mailboxCountsByScope[account.id] ?? EMPTY_MAILBOX_COUNTS;
+            return (
+              <div key={account.id} className="mail-folder-group">
+                <div className="mail-scope-heading">
+                  <span className="account-logo" aria-hidden>
+                    <Triangle size={11} />
+                  </span>
+                  <strong>{accountScopeLabel(account)}</strong>
+                </div>
+                {primaryFolders.map((folder) => {
+                  const count = counts[folder.key];
+                  return (
+                    <button
+                      key={`${account.id}-${folder.key}`}
+                      className={`folder-row ${
+                        folder.key === mailbox && selectedScope === account.id
+                          ? "active"
+                          : ""
+                      }`.trim()}
+                      onClick={() => {
+                        setSelectedScope(account.id);
+                        setMailbox(folder.key);
+                      }}
+                      type="button"
+                    >
+                      <span className="folder-label">
+                        <folder.icon size={15} />
+                        {folder.label}
+                      </span>
+                      <span className="folder-count">
+                        {count === null ? "" : count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+
           <div className="mail-folder-group">
             <p className="folder-note">
-              Gmail folders and search now reflect live mailbox state.
+              Combined views include every active account. Use the profile
+              button in the rail to manage connected accounts.
             </p>
             <button
               className="folder-row signout-row"
@@ -680,7 +779,12 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
 
         <section className="mail-center-list">
           <div className="list-topbar">
-            <h1>{activeHeading}</h1>
+            <div className="list-title-block">
+              <h1>{activeHeading}</h1>
+              <p>
+                {selectedScope === "all" ? "All Accounts" : activeScopeHeading}
+              </p>
+            </div>
             <div className="list-tabs">
               <button
                 className={listTab === "all" ? "active" : ""}
@@ -705,8 +809,12 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
               <input
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Search Gmail"
-                aria-label="Search Gmail"
+                placeholder={
+                  selectedScope === "all"
+                    ? "Search all inboxes"
+                    : `Search ${activeScopeHeading}`
+                }
+                aria-label="Search mail"
               />
             </div>
           </div>
@@ -725,7 +833,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
               {threads.map((thread) => {
                 const name = displayNameFromThread(
                   thread,
-                  session?.account_email,
+                  thread.account_email ?? session?.account_email,
                 );
                 const labels = labelsFromThread(thread);
                 return (
@@ -747,6 +855,9 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
                       <strong>{name}</strong>
                       <span>{relativeTime(thread.last_message_at)}</span>
                     </div>
+                    <p className="mail-card-account">
+                      {thread.account_email ?? "Linked account"}
+                    </p>
                     <p className="mail-card-subject">{thread.subject}</p>
                     <p className="mail-card-snippet">{thread.snippet}</p>
                     <div className="mail-card-labels">
@@ -888,22 +999,28 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
               <div className="read-header">
                 <div className="avatar-circle">
                   {initials(
-                    displayNameFromThread(activeThread, session?.account_email),
+                    displayNameFromThread(
+                      activeThread,
+                      activeThread.account_email ?? session?.account_email,
+                    ),
                   )}
                 </div>
                 <div>
                   <strong>
                     {displayNameFromThread(
                       activeThread,
-                      session?.account_email,
+                      activeThread.account_email ?? session?.account_email,
                     )}
                   </strong>
                   <p>{activeThread.subject}</p>
                   <p>
+                    Account: {activeThread.account_email ?? "Linked account"}
+                  </p>
+                  <p>
                     Reply-To:{" "}
                     {counterpartyEmailFromThread(
                       activeThread,
-                      session?.account_email,
+                      activeThread.account_email ?? session?.account_email,
                     )}
                   </p>
                 </div>
@@ -967,7 +1084,10 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
                   placeholder={
                     composeMode === "forward"
                       ? "Add a note before forwarding..."
-                      : `Reply ${displayNameFromThread(activeThread, session?.account_email)}...`
+                      : `Reply ${displayNameFromThread(
+                          activeThread,
+                          activeThread.account_email ?? session?.account_email,
+                        )}...`
                   }
                 />
                 <div className="reply-actions">

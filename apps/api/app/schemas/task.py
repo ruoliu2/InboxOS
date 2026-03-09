@@ -20,6 +20,8 @@ class TaskItem(BaseModel):
     status: TaskStatus
     due_at: datetime | None = None
     linked_account_id: str | None = None
+    account_email: str | None = None
+    account_name: str | None = None
     conversation_id: str | None = None
     thread_id: str | None = None
     category: str | None = None

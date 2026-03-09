@@ -1,8 +1,12 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CalendarDays, Check, Mail } from "lucide-react";
+
+import { api } from "@inboxos/lib/api";
+import { AuthSessionResponse } from "@inboxos/types";
 
 const items = [
   { href: "/mail", label: "Mail", icon: Mail },
@@ -12,6 +16,41 @@ const items = [
 
 export function AppRail() {
   const pathname = usePathname();
+  const [session, setSession] = useState<AuthSessionResponse | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void api
+      .getSession()
+      .then((nextSession) => {
+        if (!cancelled && nextSession.authenticated) {
+          setSession(nextSession);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSession(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const profileLabel =
+    session?.account_name ??
+    session?.user?.display_name ??
+    session?.account_email ??
+    session?.user?.primary_email ??
+    "Settings";
+  const initials = profileLabel
+    .split(" ")
+    .map((chunk) => chunk[0] ?? "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
     <aside className="app-rail" aria-label="App switcher">
@@ -35,6 +74,28 @@ export function AppRail() {
           );
         })}
       </nav>
+      <div className="rail-footer">
+        <Link
+          href="/settings"
+          className={`rail-link rail-profile-link ${
+            pathname === "/settings" || pathname.startsWith("/settings/")
+              ? "active"
+              : ""
+          }`.trim()}
+          title={profileLabel}
+          aria-label="Settings"
+        >
+          {session?.account_picture ? (
+            <img
+              src={session.account_picture}
+              alt=""
+              className="rail-avatar-image"
+            />
+          ) : (
+            <span className="rail-avatar-fallback">{initials || "IO"}</span>
+          )}
+        </Link>
+      </div>
     </aside>
   );
 }

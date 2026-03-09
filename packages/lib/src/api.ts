@@ -8,6 +8,7 @@ import {
   ComposeThreadResponse,
   CreateCalendarEventRequest,
   CreateTaskRequest,
+  MailboxScope,
   MailboxCounts,
   ReplyToThreadResponse,
   TaskItem,
@@ -87,12 +88,16 @@ export const api = {
     }),
   getSession: () => request<AuthSessionResponse>("/auth/session"),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
-  getGmailMailboxCounts: () => request<MailboxCounts>("/gmail/mailbox-counts"),
+  getGmailMailboxCounts: (scope: MailboxScope = "all") =>
+    request<MailboxCounts>(
+      `/gmail/mailbox-counts?scope=${encodeURIComponent(scope)}`,
+    ),
   getGmailThreads: (options?: {
     page_token?: string | null;
     page_size?: number;
     q?: string;
     mailbox?: MailboxKey;
+    scope?: MailboxScope;
     unread_only?: boolean;
   }) => {
     const params = new URLSearchParams();
@@ -107,6 +112,9 @@ export const api = {
     }
     if (options?.mailbox) {
       params.set("mailbox", options.mailbox);
+    }
+    if (options?.scope) {
+      params.set("scope", options.scope);
     }
     if (options?.unread_only) {
       params.set("unread_only", "true");
@@ -137,19 +145,30 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ action }),
     }),
-  getCalendarEvents: (timeMin: string, timeMax: string) =>
+  getCalendarEvents: (
+    timeMin: string,
+    timeMax: string,
+    scope: MailboxScope = "all",
+  ) =>
     request<CalendarEvent[]>(
-      `/calendar/events?time_min=${encodeURIComponent(timeMin)}&time_max=${encodeURIComponent(timeMax)}`,
+      `/calendar/events?time_min=${encodeURIComponent(timeMin)}&time_max=${encodeURIComponent(timeMax)}&scope=${encodeURIComponent(scope)}`,
     ),
   createCalendarEvent: (payload: CreateCalendarEventRequest) =>
     request<CalendarEvent>("/calendar/events", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  deleteCalendarEvent: (eventId: string) =>
-    request<void>(`/calendar/events/${eventId}`, {
-      method: "DELETE",
-    }),
+  deleteCalendarEvent: (eventId: string, linkedAccountId?: string | null) =>
+    request<void>(
+      `/calendar/events/${eventId}${
+        linkedAccountId
+          ? `?linked_account_id=${encodeURIComponent(linkedAccountId)}`
+          : ""
+      }`,
+      {
+        method: "DELETE",
+      },
+    ),
   getTasks: () => request<TaskItem[]>("/tasks"),
   createTask: (payload: CreateTaskRequest) =>
     request<TaskItem>("/tasks/create", {

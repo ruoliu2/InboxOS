@@ -27,6 +27,12 @@ class AuthCallbackResult:
     session: AuthSessionRecord
 
 
+@dataclass
+class LinkedAccountAccess:
+    account: LinkedAccountRecord
+    credential: ProviderCredentialRecord
+
+
 class AuthService:
     def __init__(
         self,
@@ -263,6 +269,35 @@ class AuthService:
     def list_linked_accounts(self, user_id: str) -> list[LinkedAccountRecord]:
         return self.store.list_linked_accounts(user_id)
 
+    def get_linked_account_access(
+        self,
+        user_id: str,
+        linked_account_id: str,
+    ) -> LinkedAccountAccess | None:
+        account = self.store.get_linked_account(user_id, linked_account_id)
+        if account is None or account.status != "active":
+            return None
+        return self._linked_account_access(account)
+
+    def list_active_account_access(
+        self,
+        user_id: str,
+        *,
+        provider: str | None = None,
+    ) -> list[LinkedAccountAccess]:
+        accounts = []
+        for account in self.store.list_linked_accounts(user_id):
+            if account.status != "active":
+                continue
+            if provider and canonical_provider(account.provider) != canonical_provider(
+                provider
+            ):
+                continue
+            access = self._linked_account_access(account)
+            if access is not None:
+                accounts.append(access)
+        return accounts
+
     def get_user(self, user_id: str | None) -> AppUserRecord | None:
         if not user_id:
             return None
@@ -286,7 +321,21 @@ class AuthService:
         return session
 
     def disconnect_account(self, user_id: str, linked_account_id: str) -> None:
+        remaining_accounts = [
+            account
+            for account in self.store.list_linked_accounts(user_id)
+            if account.id != linked_account_id and account.status == "active"
+        ]
         self.store.disconnect_account(user_id, linked_account_id)
+        if remaining_accounts:
+            replacement = remaining_accounts[0]
+            for session in self.store.list_sessions_for_user(user_id):
+                if session.active_linked_account_id == linked_account_id:
+                    self.store.set_active_account(
+                        session.session_id,
+                        user_id,
+                        replacement.id,
+                    )
 
     def set_session_cookie(
         self,
@@ -358,3 +407,37 @@ class AuthService:
 
     def _is_google_provider(self, provider: str | None) -> bool:
         return canonical_provider(provider) == "google_gmail"
+
+    def _linked_account_access(
+        self, account: LinkedAccountRecord
+    ) -> LinkedAccountAccess | None:
+        credential = self.store.get_provider_credential(account.id)
+        if credential is None:
+            return None
+
+        if self._is_google_provider(account.provider):
+            now = datetime.now(UTC)
+            if (
+                credential.expires_at is not None
+                and credential.expires_at <= now + timedelta(seconds=30)
+            ):
+                if not credential.refresh_token:
+                    return None
+                try:
+                    refreshed = self.google_client.refresh_access_token(
+                        credential.refresh_token
+                    )
+                except RuntimeError:
+                    return None
+                credential = ProviderCredentialRecord(
+                    linked_account_id=account.id,
+                    access_token=refreshed.access_token,
+                    refresh_token=refreshed.refresh_token or credential.refresh_token,
+                    scope=refreshed.scope or credential.scope,
+                    expires_at=refreshed.expires_at,
+                    created_at=credential.created_at,
+                    updated_at=datetime.now(UTC),
+                )
+                self.store.upsert_provider_credential(credential)
+
+        return LinkedAccountAccess(account=account, credential=credential)
