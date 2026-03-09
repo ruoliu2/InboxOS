@@ -248,16 +248,17 @@ export function CalendarWorkspace() {
     setError(null);
 
     try {
-      const nextSession = await api.getSession();
+      const [nextSession, nextEvents] = await Promise.all([
+        api.getSession(),
+        api.getCalendarEvents(
+          fetchRange.start.toISOString(),
+          fetchRange.end.toISOString(),
+        ),
+      ]);
       if (!nextSession.authenticated) {
         window.location.href = "/auth";
         return;
       }
-
-      const nextEvents = await api.getCalendarEvents(
-        fetchRange.start.toISOString(),
-        fetchRange.end.toISOString(),
-      );
       setSession(nextSession);
       setEvents(nextEvents.map(normalizeEvent));
     } catch (loadError) {

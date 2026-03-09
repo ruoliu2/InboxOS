@@ -2694,3 +2694,34 @@ def test_opening_gmail_thread_recovers_missing_session_account_email(
     )
     assert cached_thread is not None
     assert cached_thread.id == "gmail-thread-3"
+
+
+def test_opening_gmail_thread_rejects_recovery_from_other_users_account(client):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    with auth_store._lock, auth_store._connect() as connection:
+        connection.execute(
+            """
+            UPDATE linked_accounts
+            SET provider_account_ref = NULL,
+                user_id = 'other-user'
+            WHERE id = (
+                SELECT active_linked_account_id
+                FROM app_sessions
+                WHERE session_id = ?
+            )
+            """,
+            (session.session_id,),
+        )
+        connection.commit()
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
+
+    response = client.get("/gmail/threads/gmail-thread-4")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "An active linked Google account is required."

@@ -676,7 +676,22 @@ body.mail-resizing {
 .message-plain-body {
   margin: 0;
   white-space: pre-wrap;
-  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.45;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    "Noto Sans",
+    "Apple Color Emoji",
+    "Segoe UI Emoji",
+    "Segoe UI Symbol",
+    sans-serif;
 }
 
 .message-html-preview {

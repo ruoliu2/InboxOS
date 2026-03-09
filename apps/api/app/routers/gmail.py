@@ -84,13 +84,9 @@ def require_active_google_account(
         linked_account = auth_store.get_linked_account_by_id(
             session.active_linked_account_id
         )
-        if linked_account is not None:
+        if linked_account is not None and linked_account.user_id == session.user_id:
             account_email = linked_account.provider_account_ref
-            if (
-                not account_email
-                and linked_account.provider_account_id
-                and "@" in linked_account.provider_account_id
-            ):
+            if not account_email and "@" in (linked_account.provider_account_id or ""):
                 account_email = linked_account.provider_account_id
 
     if not account_email:
