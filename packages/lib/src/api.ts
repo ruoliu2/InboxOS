@@ -25,6 +25,16 @@ export type SendGmailMessageInput = SendGmailMessageRequest & {
   attachments?: unknown[];
 };
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 async function readErrorMessage(response: Response): Promise<string> {
   const body = await response.text();
   if (!body) {
@@ -58,15 +68,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     cache: "no-store",
   });
 
-  if (response.status === 401) {
-    if (typeof window !== "undefined") {
-      window.location.href = "/auth";
-    }
-    throw new Error("Authentication required.");
-  }
-
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
+    throw new ApiError(response.status, await readErrorMessage(response));
   }
 
   if (response.status === 204) {

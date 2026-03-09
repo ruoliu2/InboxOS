@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, CalendarDays, Mail } from "lucide-react";
 
 import { api } from "@inboxos/lib/api";
 import { AuthSessionResponse } from "@inboxos/types";
@@ -85,7 +84,7 @@ export function AuthView() {
   return (
     <main className="grid h-full min-h-0 gap-5 rounded-[12px] border border-[var(--line)] bg-white p-5 shadow-[var(--shadow)] md:grid-cols-[minmax(0,1.05fr)_400px] md:gap-6 md:p-6">
       <section className="flex flex-col justify-between rounded-[18px] border border-[#e2e8f0] bg-[linear-gradient(180deg,#f8fafc_0%,#eef2ff_100%)] p-8">
-        <div className="grid gap-8">
+        <div className="grid gap-3">
           <div className="grid gap-3">
             <span className="inline-flex w-fit rounded-full border border-[#cbd5e1] bg-white/80 px-3 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-[#334155]">
               Shared inbox workspace
@@ -100,27 +99,7 @@ export function AuthView() {
               </p>
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            {[
-              { label: "Gmail inbox threads", icon: Mail },
-              { label: "Google Calendar events", icon: CalendarDays },
-              { label: "Cookie-backed session redirect", icon: ArrowRight },
-            ].map((item) => (
-              <div
-                key={item.label}
-                className="rounded-[16px] border border-white/80 bg-white/85 p-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
-              >
-                <item.icon size={16} className="text-[#334155]" />
-                <p className="mt-3 text-[0.88rem] font-medium text-[#0f172a]">
-                  {item.label}
-                </p>
-              </div>
-            ))}
-          </div>
         </div>
-        <p className="m-0 text-[0.95rem] font-medium text-[#1e293b]">
-          Agentic first mail
-        </p>
       </section>
 
       <section className="flex min-h-0 items-center justify-center">
