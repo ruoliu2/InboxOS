@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  type CSSProperties,
   type ChangeEvent,
+  type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -9,6 +11,7 @@ import {
   useState,
 } from "react";
 import {
+  ArrowLeft,
   Archive,
   ArchiveX,
   ChevronDown,
@@ -41,7 +44,6 @@ import {
   ThreadSummary,
   ThreadSummaryPage,
 } from "@inboxos/types";
-import { Button } from "@inboxos/ui/button";
 import { ConfirmDialog } from "@inboxos/ui/confirm-dialog";
 import { OverflowMenu } from "@inboxos/ui/overflow-menu";
 
@@ -66,8 +68,18 @@ type ConfirmState = {
   action: ThreadActionName;
 } | null;
 
+type ResizeTarget = "nav" | "list" | null;
+
 const PAGE_SIZE = 20;
 const HYDRATE_BATCH_SIZE = 8;
+const DEFAULT_MAIL_NAV_WIDTH = 208;
+const MAIL_RESIZER_WIDTH = 10;
+const MIN_MAIL_NAV_WIDTH = 176;
+const MAX_MAIL_NAV_WIDTH = 280;
+const MIN_LIST_PANE_WIDTH = 280;
+const DEFAULT_LIST_PANE_WIDTH = 328;
+const MAX_LIST_PANE_WIDTH = 420;
+const MIN_READ_PANE_WIDTH = 360;
 const EMPTY_MAILBOX_COUNTS: MailboxCounts = {
   inbox: null,
   sent: null,
@@ -322,6 +334,8 @@ export function MailWorkspace({
   const [newMessageMinimized, setNewMessageMinimized] = useState(false);
   const [newMessageMaximized, setNewMessageMaximized] = useState(false);
   const [scheduleMenuOpen, setScheduleMenuOpen] = useState(false);
+  const [navPaneWidth, setNavPaneWidth] = useState(DEFAULT_MAIL_NAV_WIDTH);
+  const [listPaneWidth, setListPaneWidth] = useState(DEFAULT_LIST_PANE_WIDTH);
   const threadRequestIdRef = useRef(0);
   const listRequestIdRef = useRef(0);
   const hydrationEpochRef = useRef(0);
@@ -332,6 +346,13 @@ export function MailWorkspace({
   const listScrollerRef = useRef<HTMLDivElement | null>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
   const newMessageAttachmentsRef = useRef<NewMessageAttachment[]>([]);
+  const mailShellRef = useRef<HTMLElement | null>(null);
+  const navPaneWidthRef = useRef(DEFAULT_MAIL_NAV_WIDTH);
+  const listPaneWidthRef = useRef(DEFAULT_LIST_PANE_WIDTH);
+  const resizeTargetRef = useRef<ResizeTarget>(null);
+  const resizePointerIdRef = useRef<number | null>(null);
+  const resizeStartXRef = useRef(0);
+  const resizeStartWidthRef = useRef(DEFAULT_LIST_PANE_WIDTH);
 
   const unreadOnly = listTab === "unread";
   const activeHeading = mailboxHeading(mailbox);
@@ -360,12 +381,8 @@ export function MailWorkspace({
   const resetHydration = useCallback(() => {
     hydrationEpochRef.current += 1;
     hydratingIdsRef.current.clear();
-    hydratedIdsRef.current = new Set(
-      threads
-        .filter((thread): thread is ThreadSummary => thread.state === "ready")
-        .map((thread) => thread.id),
-    );
-  }, [threads]);
+    hydratedIdsRef.current.clear();
+  }, []);
 
   const hydrateThreadIds = useCallback(async (threadIds: string[]) => {
     const normalized = threadIds.filter((threadId) => {
@@ -413,6 +430,9 @@ export function MailWorkspace({
     setLoadingList(true);
     setError(null);
     setNotice(null);
+    setThreads([]);
+    setNextPageToken(null);
+    setHasMore(false);
 
     try {
       const page = await api.getGmailThreads({
@@ -427,9 +447,6 @@ export function MailWorkspace({
       setThreads(page.threads);
       setNextPageToken(page.next_page_token);
       setHasMore(page.has_more);
-      if (page.threads.length === 0) {
-        setNotice(`No ${activeHeading.toLowerCase()} threads were found.`);
-      }
       page.threads.forEach((thread) => {
         if (thread.state === "ready") {
           hydratedIdsRef.current.add(thread.id);
@@ -714,6 +731,143 @@ export function MailWorkspace({
     Boolean(newMessageSubject.trim()) &&
     !sendingNewMessage;
 
+  useEffect(() => {
+    navPaneWidthRef.current = navPaneWidth;
+  }, [navPaneWidth]);
+
+  useEffect(() => {
+    listPaneWidthRef.current = listPaneWidth;
+  }, [listPaneWidth]);
+
+  const clampNavPaneWidth = useCallback(
+    (nextWidth: number, listWidth = listPaneWidthRef.current): number => {
+      const shellWidth = mailShellRef.current?.clientWidth ?? 0;
+      const maxWidthFromShell =
+        shellWidth > 0
+          ? shellWidth -
+            listWidth -
+            MIN_READ_PANE_WIDTH -
+            MAIL_RESIZER_WIDTH * 2
+          : MAX_MAIL_NAV_WIDTH;
+      const cappedMaxWidth = Math.min(MAX_MAIL_NAV_WIDTH, maxWidthFromShell);
+      const safeMaxWidth = Math.max(MIN_MAIL_NAV_WIDTH, cappedMaxWidth);
+      return Math.min(Math.max(nextWidth, MIN_MAIL_NAV_WIDTH), safeMaxWidth);
+    },
+    [],
+  );
+
+  const clampListPaneWidth = useCallback(
+    (nextWidth: number, navWidth = navPaneWidthRef.current): number => {
+      const shellWidth = mailShellRef.current?.clientWidth ?? 0;
+      const maxWidthFromShell =
+        shellWidth > 0
+          ? shellWidth -
+            navWidth -
+            MIN_READ_PANE_WIDTH -
+            MAIL_RESIZER_WIDTH * 2 -
+            8
+          : MAX_LIST_PANE_WIDTH;
+      const cappedMaxWidth = Math.min(MAX_LIST_PANE_WIDTH, maxWidthFromShell);
+      const safeMaxWidth = Math.max(MIN_LIST_PANE_WIDTH, cappedMaxWidth);
+      return Math.min(Math.max(nextWidth, MIN_LIST_PANE_WIDTH), safeMaxWidth);
+    },
+    [],
+  );
+
+  const syncPaneWidths = useCallback(() => {
+    const nextNavWidth = clampNavPaneWidth(
+      navPaneWidthRef.current,
+      listPaneWidthRef.current,
+    );
+    if (nextNavWidth !== navPaneWidthRef.current) {
+      setNavPaneWidth(nextNavWidth);
+    }
+    const nextListWidth = clampListPaneWidth(
+      listPaneWidthRef.current,
+      nextNavWidth,
+    );
+    if (nextListWidth !== listPaneWidthRef.current) {
+      setListPaneWidth(nextListWidth);
+    }
+  }, [clampListPaneWidth, clampNavPaneWidth]);
+
+  const finishPaneResize = useCallback(() => {
+    resizeTargetRef.current = null;
+    resizePointerIdRef.current = null;
+    document.body.classList.remove("mail-resizing");
+  }, []);
+
+  const startPaneResize = useCallback(
+    (
+      target: Exclude<ResizeTarget, null>,
+      event: ReactPointerEvent<HTMLDivElement>,
+    ) => {
+      if (window.innerWidth <= 720) {
+        return;
+      }
+      resizeTargetRef.current = target;
+      resizePointerIdRef.current = event.pointerId;
+      resizeStartXRef.current = event.clientX;
+      resizeStartWidthRef.current =
+        target === "nav" ? navPaneWidthRef.current : listPaneWidthRef.current;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      document.body.classList.add("mail-resizing");
+    },
+    [],
+  );
+
+  const handlePaneResizeMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (resizePointerIdRef.current !== event.pointerId) {
+        return;
+      }
+      const deltaX = event.clientX - resizeStartXRef.current;
+      if (resizeTargetRef.current === "nav") {
+        setNavPaneWidth(
+          clampNavPaneWidth(resizeStartWidthRef.current + deltaX),
+        );
+        return;
+      }
+      if (resizeTargetRef.current === "list") {
+        setListPaneWidth(
+          clampListPaneWidth(resizeStartWidthRef.current + deltaX),
+        );
+      }
+    },
+    [clampListPaneWidth, clampNavPaneWidth],
+  );
+
+  const handlePaneResizeEnd = useCallback(
+    (event?: ReactPointerEvent<HTMLDivElement>) => {
+      if (event && resizePointerIdRef.current !== event.pointerId) {
+        return;
+      }
+      finishPaneResize();
+    },
+    [finishPaneResize],
+  );
+
+  useEffect(() => {
+    return () => {
+      document.body.classList.remove("mail-resizing");
+    };
+  }, []);
+
+  useEffect(() => {
+    function syncPaneWidth() {
+      syncPaneWidths();
+    }
+
+    window.addEventListener("resize", syncPaneWidth);
+    return () => {
+      window.removeEventListener("resize", syncPaneWidth);
+    };
+  }, [syncPaneWidths]);
+
+  useEffect(() => {
+    syncPaneWidths();
+  }, [navPaneWidth, syncPaneWidths]);
+
   function focusComposer(mode: ComposeMode) {
     setComposeMode(mode);
     setNotice(null);
@@ -963,392 +1117,451 @@ export function MailWorkspace({
 
   const listRows =
     threads.length === 0 && loadingList ? buildSkeletonRows() : threads;
+  const emptyListCopy = searchQuery
+    ? "No matching messages were found."
+    : unreadOnly
+      ? "No unread messages in this Gmail view."
+      : "No messages in this Gmail view.";
 
   return (
     <>
-      <main className="mail-shell panel-surface">
-        <aside className="mail-left-nav">
-          <div className="mail-account-select">
-            <span className="account-logo" aria-hidden>
-              <Triangle size={11} />
-            </span>
-            <span className="account-name">{accountLabel}</span>
-            <span className="account-caret" aria-hidden>
-              <ChevronDown size={14} />
-            </span>
-          </div>
-
-          <div className="mail-folder-group">
-            {primaryFolders.map((folder) => {
-              const count = mailboxCounts[folder.key];
-              return (
-                <button
-                  key={folder.key}
-                  className={`folder-row ${folder.key === mailbox ? "active" : ""}`.trim()}
-                  onClick={() => setMailbox(folder.key)}
-                  type="button"
-                >
-                  <span className="folder-label">
-                    <folder.icon size={15} />
-                    {folder.label}
-                  </span>
-                  <span className="folder-count">
-                    {count === null ? "" : count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mail-folder-group">
-            <p className="folder-note">
-              Inbox rows load from cached summaries first, then fill from Gmail
-              metadata.
-            </p>
-            <button
-              className="folder-row signout-row"
-              onClick={signOut}
-              type="button"
-            >
-              <span className="folder-label">
-                <LogOut size={15} />
-                Sign Out
+      <main className="mail-page">
+        <section
+          ref={mailShellRef}
+          className={`mail-shell ${selectedThreadId ? "thread-selected" : ""}`.trim()}
+          style={
+            {
+              "--mail-nav-width": `${navPaneWidth}px`,
+              "--mail-list-width": `${listPaneWidth}px`,
+            } as CSSProperties
+          }
+        >
+          <aside className="mail-left-nav panel-surface">
+            <div className="mail-account-select">
+              <span className="account-logo" aria-hidden>
+                <Triangle size={11} />
               </span>
-            </button>
-          </div>
-        </aside>
+              <span className="account-name">{accountLabel}</span>
+              <span className="account-caret" aria-hidden>
+                <ChevronDown size={14} />
+              </span>
+            </div>
 
-        <section className="mail-center-list">
-          <div className="list-topbar">
-            <h1>{activeHeading}</h1>
-            <div className="list-tabs">
+            <div className="mail-folder-group">
+              {primaryFolders.map((folder) => {
+                const count = mailboxCounts[folder.key];
+                return (
+                  <button
+                    key={folder.key}
+                    className={`folder-row ${folder.key === mailbox ? "active" : ""}`.trim()}
+                    onClick={() => setMailbox(folder.key)}
+                    type="button"
+                  >
+                    <span className="folder-label">
+                      <folder.icon size={15} />
+                      {folder.label}
+                    </span>
+                    <span className="folder-count">
+                      {count === null ? "" : count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mail-folder-group">
               <button
-                className={listTab === "all" ? "active" : ""}
-                onClick={() => setListTab("all")}
+                className="folder-row signout-row"
+                onClick={signOut}
                 type="button"
               >
-                All mail
-              </button>
-              <button
-                className={listTab === "unread" ? "active" : ""}
-                onClick={() => setListTab("unread")}
-                type="button"
-              >
-                Unread
+                <span className="folder-label">
+                  <LogOut size={15} />
+                  Sign Out
+                </span>
               </button>
             </div>
-          </div>
+          </aside>
 
-          <div className="mail-search-wrap">
-            <div className="search-field">
-              <Search size={16} />
-              <input
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Search Gmail"
-                aria-label="Search Gmail"
-              />
-            </div>
-          </div>
+          <div
+            className="mail-pane-resizer mail-pane-resizer-nav"
+            role="separator"
+            aria-label="Resize folders and inbox panes"
+            aria-orientation="vertical"
+            onPointerDown={(event) => startPaneResize("nav", event)}
+            onPointerMove={handlePaneResizeMove}
+            onPointerUp={handlePaneResizeEnd}
+            onPointerCancel={handlePaneResizeEnd}
+            onLostPointerCapture={handlePaneResizeEnd}
+          />
 
-          {notice ? <p className="status inline-status">{notice}</p> : null}
-          {error ? <p className="status error inline-status">{error}</p> : null}
-
-          <div className="mail-card-list" ref={listScrollerRef}>
-            {listRows.length === 0 && !loadingList && !error ? (
-              <p className="list-empty">No messages in this Gmail view.</p>
-            ) : null}
-            {listRows.map((thread) => {
-              const readyThread = isReadyThread(thread) ? thread : null;
-              const name = readyThread
-                ? displayNameFromThread(readyThread, session?.account_email)
-                : "Loading thread";
-              const labels = readyThread ? labelsFromThread(readyThread) : [];
-              return (
+          <section className="mail-center-list panel-surface">
+            <div className="list-topbar">
+              <div className="list-heading">
+                <h2>{activeHeading}</h2>
+              </div>
+              <div className="list-tabs">
                 <button
-                  key={thread.id}
-                  className={`mail-card ${thread.id === selectedThreadId ? "active" : ""} ${readyThread ? "" : "mail-card-placeholder"}`.trim()}
-                  disabled={!readyThread && thread.id.startsWith("skeleton-")}
-                  onClick={() => {
-                    if (thread.id === selectedThreadId) {
-                      return;
-                    }
-                    setSelectedThread(null);
-                    setLoadingThread(true);
-                    setError(null);
-                    setSelectedThreadId(thread.id);
-                  }}
+                  className={listTab === "all" ? "active" : ""}
+                  onClick={() => setListTab("all")}
                   type="button"
                 >
-                  {readyThread ? (
-                    <>
-                      <div className="mail-card-row">
-                        <strong>{name}</strong>
-                        <span>{relativeTime(readyThread.last_message_at)}</span>
-                      </div>
-                      <p className="mail-card-subject">{readyThread.subject}</p>
-                      <p className="mail-card-snippet">{readyThread.snippet}</p>
-                      <div className="mail-card-labels">
-                        {labels.map((label) => (
-                          <span
-                            key={`${thread.id}-${label}`}
-                            className="label-pill"
-                          >
-                            {label}
-                          </span>
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="mail-card-placeholder-content" aria-hidden>
-                      <div className="mail-card-skeleton mail-card-skeleton-title" />
-                      <div className="mail-card-skeleton mail-card-skeleton-subject" />
-                      <div className="mail-card-skeleton mail-card-skeleton-line" />
-                      <div className="mail-card-skeleton mail-card-skeleton-line short" />
-                    </div>
-                  )}
+                  All mail
                 </button>
-              );
-            })}
+                <button
+                  className={listTab === "unread" ? "active" : ""}
+                  onClick={() => setListTab("unread")}
+                  type="button"
+                >
+                  Unread
+                </button>
+              </div>
+            </div>
 
-            {hasMore ? (
-              <div className="mail-list-footer">
-                {loadingMore ? <span>Loading older mail...</span> : null}
-                <div
-                  ref={loadMoreTriggerRef}
-                  className="mail-list-sentinel"
-                  aria-hidden
+            <div className="mail-search-wrap">
+              <div className="search-field">
+                <Search size={16} />
+                <input
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                  placeholder="Search Gmail"
+                  aria-label="Search Gmail"
                 />
               </div>
-            ) : null}
-          </div>
-        </section>
+            </div>
 
-        <section className="mail-read-pane">
-          <div className="read-toolbar">
-            <button
-              type="button"
-              aria-label="Compose new email"
-              onClick={openNewMessageComposer}
-            >
-              <PenSquare size={15} />
-            </button>
-            <button
-              type="button"
-              aria-label="Archive"
-              onClick={() => void runThreadAction("archive")}
-              disabled={
-                !activeThread ||
-                mailbox === "archive" ||
-                actionInFlight !== null
-              }
-            >
-              <Archive size={15} />
-            </button>
-            <button
-              type="button"
-              aria-label="Move to junk"
-              onClick={() => void runThreadAction("junk")}
-              disabled={
-                !activeThread || mailbox === "junk" || actionInFlight !== null
-              }
-            >
-              <ArchiveX size={15} />
-            </button>
-            <button
-              type="button"
-              aria-label="Move to trash"
-              onClick={() =>
-                setConfirmState({
-                  title: "Move this thread to trash?",
-                  body: "The Gmail thread will move to trash and can be restored from the trash view.",
-                  confirmLabel: "Move to trash",
-                  action: "trash",
-                })
-              }
-              disabled={!activeThread || actionInFlight !== null}
-            >
-              <Trash2 size={15} />
-            </button>
-            <button
-              type="button"
-              aria-label="Snooze unavailable"
-              className="disabled-toolbar-button"
-              onClick={() =>
-                setNotice(
-                  "Snooze is not exposed by the Gmail thread API. This control is intentionally disabled.",
-                )
-              }
-              disabled={!activeThread}
-            >
-              <Clock size={15} />
-            </button>
-            <div className="spacer" />
-            <div className="toolbar-sep" />
-            <button
-              type="button"
-              aria-label="Reply"
-              onClick={() => focusComposer("reply")}
-              disabled={!activeThread}
-            >
-              <Reply size={15} />
-            </button>
-            <button
-              type="button"
-              aria-label="Reply all"
-              onClick={() => focusComposer("reply_all")}
-              disabled={!activeThread}
-            >
-              <ReplyAll size={15} />
-            </button>
-            <button
-              type="button"
-              aria-label="Forward"
-              onClick={() => focusComposer("forward")}
-              disabled={!activeThread}
-            >
-              <Forward size={15} />
-            </button>
-            <div className="toolbar-sep" />
-            <div className="toolbar-menu-wrap">
+            {notice ? <p className="status inline-status">{notice}</p> : null}
+            {error ? (
+              <p className="status error inline-status">{error}</p>
+            ) : null}
+
+            <div className="mail-card-list" ref={listScrollerRef}>
+              {listRows.length === 0 && !loadingList && !error ? (
+                <p className="list-empty">{emptyListCopy}</p>
+              ) : null}
+              {listRows.map((thread) => {
+                const readyThread = isReadyThread(thread) ? thread : null;
+                const name = readyThread
+                  ? displayNameFromThread(readyThread, session?.account_email)
+                  : "Loading thread";
+                const labels = readyThread ? labelsFromThread(readyThread) : [];
+                return (
+                  <button
+                    key={thread.id}
+                    className={`mail-card ${thread.id === selectedThreadId ? "active" : ""} ${readyThread ? "" : "mail-card-placeholder"}`.trim()}
+                    disabled={!readyThread && thread.id.startsWith("skeleton-")}
+                    onClick={() => {
+                      if (thread.id === selectedThreadId) {
+                        return;
+                      }
+                      setSelectedThread(null);
+                      setLoadingThread(true);
+                      setError(null);
+                      setSelectedThreadId(thread.id);
+                    }}
+                    type="button"
+                  >
+                    {readyThread ? (
+                      <>
+                        <div className="mail-card-row">
+                          <strong>{name}</strong>
+                          <span>
+                            {relativeTime(readyThread.last_message_at)}
+                          </span>
+                        </div>
+                        <p className="mail-card-subject">
+                          {readyThread.subject}
+                        </p>
+                        <p className="mail-card-snippet">
+                          {readyThread.snippet}
+                        </p>
+                        <div className="mail-card-labels">
+                          {labels.map((label) => (
+                            <span
+                              key={`${thread.id}-${label}`}
+                              className="label-pill"
+                            >
+                              {label}
+                            </span>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <div
+                        className="mail-card-placeholder-content"
+                        aria-hidden
+                      >
+                        <div className="mail-card-skeleton mail-card-skeleton-title" />
+                        <div className="mail-card-skeleton mail-card-skeleton-subject" />
+                        <div className="mail-card-skeleton mail-card-skeleton-line" />
+                        <div className="mail-card-skeleton mail-card-skeleton-line short" />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+
+              {hasMore ? (
+                <div className="mail-list-footer">
+                  {loadingMore ? <span>Loading older mail...</span> : null}
+                  <div
+                    ref={loadMoreTriggerRef}
+                    className="mail-list-sentinel"
+                    aria-hidden
+                  />
+                </div>
+              ) : null}
+            </div>
+          </section>
+
+          <div
+            className="mail-pane-resizer mail-pane-resizer-list"
+            role="separator"
+            aria-label="Resize inbox and preview panes"
+            aria-orientation="vertical"
+            onPointerDown={(event) => startPaneResize("list", event)}
+            onPointerMove={handlePaneResizeMove}
+            onPointerUp={handlePaneResizeEnd}
+            onPointerCancel={handlePaneResizeEnd}
+            onLostPointerCapture={handlePaneResizeEnd}
+          />
+
+          <section className="mail-read-pane panel-surface">
+            <div className="read-toolbar">
               <button
                 type="button"
-                aria-label="More"
-                onClick={() => setShowMoreMenu((current) => !current)}
-                disabled={!activeThread || moreMenuItems.length === 0}
+                aria-label="Back to thread list"
+                className="thread-back-button"
+                onClick={() => {
+                  setSelectedThreadId(null);
+                  setSelectedThread(null);
+                  setLoadingThread(false);
+                  setError(null);
+                }}
               >
-                <MoreVertical size={15} />
+                <ArrowLeft size={15} />
               </button>
-              <OverflowMenu
-                open={showMoreMenu && moreMenuItems.length > 0}
-                items={moreMenuItems}
-                onClose={() => setShowMoreMenu(false)}
-              />
-            </div>
-          </div>
-
-          {selectedThreadId && loadingThread ? (
-            <p className="read-empty">Loading message...</p>
-          ) : null}
-          {selectedThreadId && !loadingThread && !activeThread && error ? (
-            <div className="read-empty empty-thread-state">
-              <Mailbox size={18} />
-              <span>{error}</span>
-            </div>
-          ) : null}
-
-          {activeThread ? (
-            <>
-              <div className="read-header">
-                <div className="avatar-circle">
-                  {initials(
-                    displayNameFromThread(activeThread, session?.account_email),
-                  )}
-                </div>
-                <div>
-                  <strong>
-                    {displayNameFromThread(
-                      activeThread,
-                      session?.account_email,
-                    )}
-                  </strong>
-                  <p>{activeThread.subject}</p>
-                  <p>
-                    Reply-To:{" "}
-                    {counterpartyEmailFromThread(
-                      activeThread,
-                      session?.account_email,
-                    )}
-                  </p>
-                </div>
-                <time>{formatDate(activeThread.last_message_at)}</time>
-              </div>
-
-              <div className="read-body message-stack">
-                {activeThread.messages.map((message) => (
-                  <article key={message.id} className="message-card">
-                    <header className="message-card-header">
-                      <strong>{message.sender}</strong>
-                      <time>{formatDate(message.sent_at)}</time>
-                    </header>
-                    {hasHtmlPreview(message) ? (
-                      <EmailHtmlPreview message={message} />
-                    ) : (
-                      <div className="message-plain-body">
-                        {message.body || "No preview available."}
-                      </div>
-                    )}
-                  </article>
-                ))}
-              </div>
-
-              <div className="reply-panel">
-                <div className="compose-mode-row">
-                  <strong>
-                    {composeMode === "reply"
-                      ? "Reply"
-                      : composeMode === "reply_all"
-                        ? "Reply all"
-                        : "Forward"}
-                  </strong>
-                </div>
-                {composeMode === "forward" ? (
-                  <div className="compose-recipient-grid">
-                    <input
-                      value={forwardTo}
-                      onChange={(event) => setForwardTo(event.target.value)}
-                      placeholder="To"
-                      aria-label="Forward recipients"
-                    />
-                    <input
-                      value={forwardCc}
-                      onChange={(event) => setForwardCc(event.target.value)}
-                      placeholder="Cc"
-                      aria-label="Forward cc recipients"
-                    />
-                    <input
-                      value={forwardBcc}
-                      onChange={(event) => setForwardBcc(event.target.value)}
-                      placeholder="Bcc"
-                      aria-label="Forward bcc recipients"
-                    />
-                  </div>
-                ) : null}
-                <textarea
-                  ref={composerRef}
-                  value={composeBody}
-                  onChange={(event) => setComposeBody(event.target.value)}
-                  placeholder={
-                    composeMode === "forward"
-                      ? "Add a note before forwarding..."
-                      : `Reply ${displayNameFromThread(activeThread, session?.account_email)}...`
-                  }
+              <button
+                type="button"
+                aria-label="Compose new email"
+                onClick={openNewMessageComposer}
+              >
+                <PenSquare size={15} />
+              </button>
+              <button
+                type="button"
+                aria-label="Archive"
+                onClick={() => void runThreadAction("archive")}
+                disabled={
+                  !activeThread ||
+                  mailbox === "archive" ||
+                  actionInFlight !== null
+                }
+              >
+                <Archive size={15} />
+              </button>
+              <button
+                type="button"
+                aria-label="Move to junk"
+                onClick={() => void runThreadAction("junk")}
+                disabled={
+                  !activeThread || mailbox === "junk" || actionInFlight !== null
+                }
+              >
+                <ArchiveX size={15} />
+              </button>
+              <button
+                type="button"
+                aria-label="Move to trash"
+                onClick={() =>
+                  setConfirmState({
+                    title: "Move this thread to trash?",
+                    body: "The Gmail thread will move to trash and can be restored from the trash view.",
+                    confirmLabel: "Move to trash",
+                    action: "trash",
+                  })
+                }
+                disabled={!activeThread || actionInFlight !== null}
+              >
+                <Trash2 size={15} />
+              </button>
+              <button
+                type="button"
+                aria-label="Snooze unavailable"
+                className="disabled-toolbar-button"
+                onClick={() =>
+                  setNotice(
+                    "Snooze is not exposed by the Gmail thread API. This control is intentionally disabled.",
+                  )
+                }
+                disabled={!activeThread}
+              >
+                <Clock size={15} />
+              </button>
+              <div className="spacer" />
+              <div className="toolbar-sep" />
+              <button
+                type="button"
+                aria-label="Reply"
+                onClick={() => focusComposer("reply")}
+                disabled={!activeThread}
+              >
+                <Reply size={15} />
+              </button>
+              <button
+                type="button"
+                aria-label="Reply all"
+                onClick={() => focusComposer("reply_all")}
+                disabled={!activeThread}
+              >
+                <ReplyAll size={15} />
+              </button>
+              <button
+                type="button"
+                aria-label="Forward"
+                onClick={() => focusComposer("forward")}
+                disabled={!activeThread}
+              >
+                <Forward size={15} />
+              </button>
+              <div className="toolbar-sep" />
+              <div className="toolbar-menu-wrap">
+                <button
+                  type="button"
+                  aria-label="More"
+                  onClick={() => setShowMoreMenu((current) => !current)}
+                  disabled={!activeThread || moreMenuItems.length === 0}
+                >
+                  <MoreVertical size={15} />
+                </button>
+                <OverflowMenu
+                  open={showMoreMenu && moreMenuItems.length > 0}
+                  items={moreMenuItems}
+                  onClose={() => setShowMoreMenu(false)}
                 />
-                <div className="reply-actions">
-                  <span className="muted">
-                    {composeMode === "forward"
-                      ? "Forwarding sends a new Gmail message with the latest message quoted."
-                      : "Replies stay in the current Gmail thread."}
-                  </span>
-                  <button
-                    className="send-button"
-                    onClick={() => void sendCompose()}
-                    type="button"
-                    disabled={sendingCompose}
-                  >
-                    {sendingCompose ? "Sending..." : "Send"}
-                  </button>
-                </div>
               </div>
-            </>
-          ) : null}
-
-          {!activeThread && !selectedThreadId && !loadingThread && !error ? (
-            <div className="read-empty empty-thread-state">
-              <Mailbox size={18} />
-              <span>Select a Gmail thread to read it here.</span>
             </div>
-          ) : null}
+
+            {selectedThreadId && loadingThread ? (
+              <p className="read-empty">Loading message...</p>
+            ) : null}
+            {selectedThreadId && !loadingThread && !activeThread && error ? (
+              <div className="read-empty empty-thread-state">
+                <Mailbox size={18} />
+                <span>{error}</span>
+              </div>
+            ) : null}
+
+            {activeThread ? (
+              <>
+                <div className="read-header">
+                  <div className="avatar-circle">
+                    {initials(
+                      displayNameFromThread(
+                        activeThread,
+                        session?.account_email,
+                      ),
+                    )}
+                  </div>
+                  <div>
+                    <strong>
+                      {displayNameFromThread(
+                        activeThread,
+                        session?.account_email,
+                      )}
+                    </strong>
+                    <p>{activeThread.subject}</p>
+                    <p>
+                      Reply-To:{" "}
+                      {counterpartyEmailFromThread(
+                        activeThread,
+                        session?.account_email,
+                      )}
+                    </p>
+                  </div>
+                  <time>{formatDate(activeThread.last_message_at)}</time>
+                </div>
+
+                <div className="read-body message-stack">
+                  {activeThread.messages.map((message) => (
+                    <article key={message.id} className="message-card">
+                      <header className="message-card-header">
+                        <strong>{message.sender}</strong>
+                        <time>{formatDate(message.sent_at)}</time>
+                      </header>
+                      {hasHtmlPreview(message) ? (
+                        <EmailHtmlPreview message={message} />
+                      ) : (
+                        <div className="message-plain-body">
+                          {message.body || "No preview available."}
+                        </div>
+                      )}
+                    </article>
+                  ))}
+                </div>
+
+                <div className="reply-panel">
+                  {composeMode === "forward" ? (
+                    <div className="compose-recipient-grid">
+                      <input
+                        value={forwardTo}
+                        onChange={(event) => setForwardTo(event.target.value)}
+                        placeholder="To"
+                        aria-label="Forward recipients"
+                      />
+                      <input
+                        value={forwardCc}
+                        onChange={(event) => setForwardCc(event.target.value)}
+                        placeholder="Cc"
+                        aria-label="Forward cc recipients"
+                      />
+                      <input
+                        value={forwardBcc}
+                        onChange={(event) => setForwardBcc(event.target.value)}
+                        placeholder="Bcc"
+                        aria-label="Forward bcc recipients"
+                      />
+                    </div>
+                  ) : null}
+                  <textarea
+                    ref={composerRef}
+                    value={composeBody}
+                    onChange={(event) => setComposeBody(event.target.value)}
+                    placeholder={
+                      composeMode === "forward"
+                        ? "Add a note before forwarding..."
+                        : undefined
+                    }
+                  />
+                  <div className="reply-actions">
+                    {composeMode === "forward" ? (
+                      <span className="muted">
+                        Forwarding sends a new Gmail message with the latest
+                        message quoted.
+                      </span>
+                    ) : (
+                      <span />
+                    )}
+                    <button
+                      className="send-button"
+                      onClick={() => void sendCompose()}
+                      type="button"
+                      disabled={sendingCompose}
+                    >
+                      {sendingCompose ? "Sending..." : "Send"}
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : null}
+
+            {!activeThread && !selectedThreadId && !loadingThread && !error ? (
+              <div className="read-empty empty-thread-state">
+                <Mailbox size={18} />
+                <span>Select a Gmail thread to read it here.</span>
+              </div>
+            ) : null}
+          </section>
         </section>
       </main>
 

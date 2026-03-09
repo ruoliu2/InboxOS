@@ -1,10 +1,10 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { SERVER_API_BASE } from "@inboxos/config/web";
+
 const SESSION_COOKIE_NAME =
   process.env.NEXT_PUBLIC_SESSION_COOKIE_NAME ?? "inboxos_session";
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 type AuthSessionStatus = {
   authenticated: boolean;
@@ -18,7 +18,7 @@ export async function getAuthSessionStatus(): Promise<AuthSessionStatus> {
   }
 
   try {
-    const response = await fetch(`${API_BASE}/auth/session`, {
+    const response = await fetch(`${SERVER_API_BASE}/auth/session`, {
       headers: {
         cookie: cookieStore.toString(),
       },

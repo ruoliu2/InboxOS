@@ -180,58 +180,21 @@ export function TasksView() {
     }
   }
 
-  const openCount = tasks.filter((task) => task.status === "open").length;
-  const completeCount = tasks.filter(
-    (task) => task.status === "completed",
-  ).length;
   const surfaceClassName =
     "rounded-[12px] border border-[var(--line)] bg-white shadow-[var(--shadow)]";
 
   return (
-    <main className="grid h-full min-h-0 gap-4">
+    <main className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-0">
       <section
         className={cn(
           surfaceClassName,
-          "grid gap-4 p-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start",
+          "grid gap-3 rounded-b-none border-b-0 p-4",
         )}
       >
-        <div>
-          <h1 className="m-0 text-[1.55rem] font-semibold text-[var(--text)]">
-            Tasks
-          </h1>
-          <p className="mt-2 text-[0.92rem] text-[var(--muted)]">
-            Task workflow with filters, pagination, and completion actions.
-          </p>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-3">
-          {[
-            { label: "Open", value: openCount },
-            { label: "Completed", value: completeCount },
-            { label: "Total", value: tasks.length },
-          ].map((item) => (
-            <div
-              key={item.label}
-              className="min-w-[120px] rounded-[14px] border border-[var(--line)] bg-[#fafafa] px-4 py-3"
-            >
-              <strong className="block text-[1.15rem] text-[var(--text)]">
-                {item.value}
-              </strong>
-              <span className="mt-1 block text-[0.78rem] uppercase tracking-[0.08em] text-[var(--muted)]">
-                {item.label}
-              </span>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className={cn(surfaceClassName, "grid gap-4 p-6")}>
         <div>
           <h2 className="m-0 text-[1.05rem] font-semibold text-[var(--text)]">
             Create Task
           </h2>
-          <p className="mt-1 text-[0.86rem] text-[var(--muted)]">
-            Add a task manually when it does not come from a mail thread.
-          </p>
         </div>
         <form
           className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_180px_auto]"
@@ -255,13 +218,22 @@ export function TasksView() {
             onChange={(event) => setNewDueAt(event.target.value)}
             aria-label="Due date"
           />
-          <Button type="submit" disabled={submitting}>
+          <Button
+            type="submit"
+            disabled={submitting}
+            className="h-10 rounded-md px-4"
+          >
             {submitting ? "Creating..." : "Create"}
           </Button>
         </form>
       </section>
 
-      <section className={cn(surfaceClassName, "grid min-h-0 gap-4 p-6")}>
+      <section
+        className={cn(
+          surfaceClassName,
+          "flex min-h-0 flex-col gap-4 rounded-t-none p-4",
+        )}
+      >
         <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_220px_220px]">
           <Input
             value={search}
@@ -314,7 +286,7 @@ export function TasksView() {
         ) : null}
 
         {!loading ? (
-          <div className="min-h-0 overflow-auto rounded-[14px] border border-[var(--line)]">
+          <div className="min-h-0 flex-1 overflow-auto rounded-[14px] border border-[var(--line)]">
             <table className="w-full min-w-[760px] border-collapse text-left text-[0.86rem]">
               <thead className="bg-[#fafafa] text-[0.73rem] uppercase tracking-[0.08em] text-[var(--muted)]">
                 <tr>
@@ -409,7 +381,7 @@ export function TasksView() {
           </div>
         ) : null}
 
-        <div className="flex flex-col justify-between gap-3 text-[0.84rem] text-[var(--muted)] sm:flex-row sm:items-center">
+        <div className="flex flex-col gap-3 text-[0.84rem] text-[var(--muted)] sm:flex-row sm:items-center sm:justify-between">
           <p className="m-0">
             Page {Math.min(pageIndex + 1, totalPages)} of {totalPages}
           </p>

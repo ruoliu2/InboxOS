@@ -65,14 +65,14 @@ a {
   height: 100dvh;
   width: 100%;
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-columns: 44px minmax(0, 1fr);
 }
 
 .page-shell {
   height: 100%;
   min-height: 0;
   min-width: 0;
-  padding: 8px;
+  padding: 0;
   overflow: hidden;
 }
 
@@ -162,41 +162,61 @@ textarea {
   font-size: 0.82rem;
 }
 
+.mail-page {
+  height: 100%;
+  min-height: 0;
+}
+
 .mail-shell {
+  --mail-nav-width: 208px;
+  --mail-list-width: 328px;
   display: grid;
-  grid-template-columns: 224px 344px minmax(0, 1fr);
+  grid-template-columns:
+    minmax(176px, var(--mail-nav-width))
+    10px
+    minmax(280px, var(--mail-list-width))
+    10px
+    minmax(0, 1fr);
+  gap: 0;
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--shadow);
 }
 
 .mail-left-nav,
 .mail-center-list,
 .mail-read-pane {
   min-height: 0;
+  overflow: hidden;
+  background: #fff;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .mail-left-nav {
-  border-right: 1px solid var(--line);
-  background: #f8fafc;
-  padding: 9px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 12px;
   overflow: auto;
 }
 
 .mail-account-select {
-  height: 32px;
+  min-height: 40px;
   border: 1px solid var(--line-strong);
-  border-radius: 8px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 9px;
-  background: #fff;
+  padding: 0 12px;
+  background: #fafafa;
   font-weight: 500;
-  font-size: 0.82rem;
+  font-size: 0.84rem;
 }
 
 .account-name {
@@ -217,9 +237,9 @@ textarea {
 
 .mail-folder-group {
   border-top: 1px solid var(--line);
-  padding-top: 8px;
+  padding-top: 12px;
   display: grid;
-  gap: 4px;
+  gap: 6px;
 }
 
 .mail-folder-group:first-of-type {
@@ -228,34 +248,36 @@ textarea {
 }
 
 .folder-row {
-  height: 31px;
+  min-height: 38px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 9px;
+  padding: 0 12px;
   color: #111827;
 }
 
 .folder-row:hover {
-  background: #f4f7fb;
+  background: #fafafa;
+  border-color: var(--line);
 }
 
 .folder-row.active {
-  background: var(--active);
-  color: var(--active-text);
+  border-color: #d6dae1;
+  background: #f5f6f8;
+  color: var(--text);
 }
 
 .folder-row.active:hover {
-  background: var(--active);
+  background: #f5f6f8;
 }
 
 .folder-label {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   font-weight: 500;
   font-size: 0.87rem;
 }
@@ -266,8 +288,9 @@ textarea {
 }
 
 .folder-note {
-  margin: 2px 0 0;
-  font-size: 0.78rem;
+  margin: 0 0 2px;
+  font-size: 0.8rem;
+  line-height: 1.45;
   color: var(--muted);
 }
 
@@ -276,27 +299,36 @@ textarea {
 }
 
 .mail-center-list {
-  border-right: 1px solid var(--line);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  min-width: 0;
 }
 
 .list-topbar {
-  height: 40px;
+  min-height: 52px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 9px;
-  padding: 0 11px;
+  gap: 12px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--line);
 }
 
-.list-topbar h1 {
+.list-heading {
+  min-width: 0;
+}
+
+.list-topbar h2 {
   margin: 0;
-  font-size: 1.02rem;
-  line-height: 1;
+  font-size: 1.05rem;
+  line-height: 1.2;
   font-weight: 600;
+}
+
+.list-heading p {
+  margin: 4px 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
 }
 
 .list-tabs {
@@ -307,8 +339,8 @@ textarea {
   gap: 0;
   padding: 3px;
   border: 1px solid var(--line-strong);
-  border-radius: 14px;
-  background: #f4f4f5;
+  border-radius: 10px;
+  background: #f7f7f8;
 }
 
 .list-tabs button {
@@ -316,7 +348,7 @@ textarea {
   min-width: 74px;
   height: auto;
   border: 0;
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 0 12px;
   background: transparent;
   color: #3f3f46;
@@ -330,13 +362,13 @@ textarea {
 }
 
 .list-tabs button.active {
-  background: #111827;
-  color: #fff;
+  background: #fff;
+  color: #111827;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
 .mail-search-wrap {
-  padding: 9px 11px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -346,25 +378,26 @@ textarea {
 
 .search-field svg {
   position: absolute;
-  left: 10px;
-  top: 8px;
+  left: 12px;
+  top: 10px;
   color: #9ca3af;
 }
 
 .search-field input {
-  min-height: 34px;
-  padding: 7px 9px 7px 31px;
+  min-height: 40px;
+  padding: 9px 12px 9px 36px;
   font-size: 0.86rem;
+  border-radius: 10px;
 }
 
 .mail-card-list {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 9px;
+  padding: 12px 16px 16px;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 10px;
 }
 
 .mail-list-footer {
@@ -383,21 +416,23 @@ textarea {
 
 .mail-card {
   width: 100%;
-  min-height: 146px;
+  min-height: 132px;
   flex: 0 0 auto;
-  border: 1px solid #d8dde7;
+  border: 1px solid var(--line);
   border-radius: 10px;
   background: #fff;
-  padding: 10px 14px 11px;
+  padding: 14px 16px;
   text-align: left;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
+  gap: 6px;
+  box-shadow: none;
 }
 
 .mail-card.active {
-  background: #f3f4f6;
+  border-color: #cfd5de;
+  background: #f8fafc;
 }
 
 .mail-card-placeholder {
@@ -432,22 +467,26 @@ textarea {
 }
 
 .mail-card-subject {
-  margin: 4px 0;
+  margin: 2px 0 0;
   font-size: 0.85rem;
   font-weight: 600;
   width: 100%;
   text-align: left;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .mail-card-snippet {
-  margin: 4px 0 8px;
+  margin: 0 0 6px;
   color: var(--muted);
-  line-height: 1.3;
+  line-height: 1.45;
   font-size: 0.79rem;
   width: 100%;
   text-align: left;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -486,8 +525,8 @@ textarea {
 
 .label-pill {
   border-radius: 8px;
-  border: 1px solid #d4d4d8;
-  background: #f4f4f5;
+  border: 1px solid #e4e4e7;
+  background: #fafafa;
   padding: 2px 7px;
   font-size: 0.73rem;
   font-weight: 600;
@@ -505,23 +544,60 @@ textarea {
 }
 
 .list-empty {
-  margin: 8px 12px;
+  margin: 8px 4px;
   color: var(--muted);
 }
 
 .mail-read-pane {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  min-width: 0;
+}
+
+.mail-pane-resizer {
+  position: relative;
+  cursor: col-resize;
+  background: #fff;
+  touch-action: none;
+  z-index: 1;
+}
+
+.mail-pane-resizer::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+}
+
+.mail-pane-resizer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+body.mail-resizing {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .read-toolbar {
-  height: 47px;
+  min-height: 52px;
   border-bottom: 1px solid var(--line);
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 6px;
-  padding: 0 10px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.read-toolbar::-webkit-scrollbar {
+  display: none;
 }
 
 .read-toolbar button {
@@ -534,6 +610,7 @@ textarea {
   border: 1px solid transparent;
   background: transparent;
   color: #374151;
+  flex: 0 0 auto;
 }
 
 .read-toolbar button:hover {
@@ -543,6 +620,11 @@ textarea {
 
 .read-toolbar .spacer {
   flex: 1;
+  min-width: 12px;
+}
+
+.thread-back-button {
+  display: none;
 }
 
 .toolbar-sep {
@@ -550,6 +632,7 @@ textarea {
   height: 20px;
   background: var(--line);
   margin: 0 2px;
+  flex: 0 0 auto;
 }
 
 .read-empty {
@@ -562,7 +645,7 @@ textarea {
   grid-template-columns: auto 1fr auto;
   gap: 9px;
   align-items: center;
-  padding: 12px;
+  padding: 16px 18px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -598,7 +681,7 @@ textarea {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 14px;
+  padding: 16px 18px;
   white-space: pre-wrap;
   line-height: 1.5;
   font-size: 0.92rem;
@@ -662,7 +745,7 @@ textarea {
 }
 
 .reply-panel {
-  padding: 11px 14px;
+  padding: 16px 18px;
   display: grid;
   gap: 9px;
 }
@@ -716,6 +799,7 @@ textarea {
 
 .toolbar-menu-wrap {
   position: relative;
+  flex: 0 0 auto;
 }
 
 .disabled-toolbar-button {
@@ -735,6 +819,50 @@ textarea {
   display: grid;
   gap: 2px;
   z-index: 10;
+}
+
+@media (max-width: 720px) {
+  .mail-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .mail-pane-resizer {
+    display: none;
+  }
+
+  .mail-read-pane {
+    display: none;
+  }
+
+  .mail-shell.thread-selected .mail-left-nav,
+  .mail-shell.thread-selected .mail-center-list {
+    display: none;
+  }
+
+  .mail-shell.thread-selected .mail-read-pane {
+    display: flex;
+    min-height: 0;
+  }
+
+  .thread-back-button {
+    display: grid;
+  }
+}
+
+@media (max-width: 620px) {
+  .mail-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mail-left-nav {
+    overflow: visible;
+  }
+
+  .list-topbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
 .overflow-menu button {
@@ -1305,10 +1433,6 @@ textarea {
 }
 
 @media (max-width: 1200px) {
-  .mail-shell {
-    grid-template-columns: 212px 322px minmax(0, 1fr);
-  }
-
   .calendar-shell {
     grid-template-columns: minmax(0, 1fr) 300px;
   }
@@ -1333,9 +1457,10 @@ textarea {
   }
 
   .app-root {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
-    height: auto;
+    grid-template-columns: 44px minmax(0, 1fr);
+    grid-template-rows: none;
+    height: 100vh;
+    height: 100dvh;
     min-height: 100vh;
   }
 
@@ -1343,20 +1468,14 @@ textarea {
     overflow: visible;
   }
 
-  .mail-shell,
   .calendar-shell {
     height: auto;
     min-height: auto;
-  }
-
-  .mail-shell,
-  .calendar-shell {
     grid-template-columns: 1fr;
   }
 
-  .mail-left-nav,
   .calendar-main,
-  .mail-center-list {
+  .calendar-agenda {
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
@@ -1370,9 +1489,6 @@ textarea {
     justify-self: start;
   }
 
-  .mail-card-list,
-  .mail-left-nav,
-  .mail-read-pane,
   .calendar-agenda {
     overflow: visible;
   }
