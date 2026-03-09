@@ -26,7 +26,11 @@
       ],
       "next": ["./node_modules/next"],
       "next/*": ["./node_modules/next/*"],
-      "lucide-react": ["./node_modules/lucide-react"]
+      "lucide-react": ["./node_modules/lucide-react"],
+      "@radix-ui/react-dialog": ["./node_modules/@radix-ui/react-dialog"],
+      "@radix-ui/react-dropdown-menu": [
+        "./node_modules/@radix-ui/react-dropdown-menu"
+      ]
     },
     "resolveJsonModule": true,
     "isolatedModules": true,

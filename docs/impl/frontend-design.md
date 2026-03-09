@@ -11,6 +11,18 @@ Shared frontend source of truth: `packages/`
 - global styles in `apps/web/app/globals.css`
 - shared shell in `packages/app/src/app-shell.tsx`
 - compact app rail in `packages/ui/src/app-rail.tsx`
+- shared Tailwind config in `apps/web/tailwind.config.ts`
+- shared UI primitives in `packages/ui/src`
+
+## UI Standard
+
+- default to Tailwind utility classes for component styling
+- use Radix primitives for interactive UI such as dialogs and menus
+- keep shared UI building blocks in `packages/ui/src`
+- keep `globals.css` for tokens, app-shell layout, and legacy layout rules only
+- avoid adding new feature-specific class blocks to `globals.css` when Tailwind can express the same layout
+- prefer native inputs styled with Tailwind unless a richer Radix primitive is necessary
+- when a feature file grows beyond a few hundred lines or mixes multiple surfaces, split child views or dialogs into sibling files
 
 ## Route Ownership
 
@@ -34,7 +46,10 @@ These files let multiple host apps mount the same feature screens without duplic
 
 ## Mail Surface
 
-Primary file: `packages/features/src/mail/mail-workspace.tsx`
+Primary files:
+
+- `packages/features/src/mail/mail-workspace.tsx`
+- `packages/features/src/mail/new-message-composer.tsx`
 
 Responsibilities:
 
@@ -66,7 +81,10 @@ Responsibilities:
 
 ## Calendar Surface
 
-Primary file: `packages/features/src/calendar/calendar-workspace.tsx`
+Primary files:
+
+- `packages/features/src/calendar/calendar-workspace.tsx`
+- `packages/features/src/calendar/calendar-dialogs.tsx`
 
 Responsibilities:
 

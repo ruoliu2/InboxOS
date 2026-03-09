@@ -16,6 +16,13 @@ InboxOS is a mail-first AI workspace with one shared UI direction across the liv
 - `docs`: product and technical documentation
 - `ui`: local ignored checkout of upstream `shadcn/ui` for reference only
 
+## UI Standard
+
+- use Tailwind utilities for new component styling
+- use Radix primitives for layered and interactive behavior
+- keep shared wrappers in `packages/ui`
+- keep `apps/web/app/globals.css` for tokens and layout, not new feature-specific components
+
 ## Architecture
 
 ```mermaid
@@ -74,10 +81,12 @@ Local app state now defaults to Supabase Postgres at `127.0.0.1:54322`. Reset th
 ### Web
 
 ```bash
-cd apps/web
 bun install
+cd apps/web
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 bun run dev
 ```
+
+Run `bun install` from the repo root. The web app and Docker image both use the root Bun workspace lockfile.
 
 Open [http://localhost:3000/mail](http://localhost:3000/mail).
 

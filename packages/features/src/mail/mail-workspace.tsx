@@ -15,7 +15,6 @@ import {
   Clock,
   Forward,
   Inbox,
-  Paperclip,
   LogOut,
   Mailbox,
   MoreVertical,
@@ -26,7 +25,6 @@ import {
   Send,
   Trash2,
   Triangle,
-  X,
 } from "lucide-react";
 
 import { api } from "@inboxos/lib/api";
@@ -41,10 +39,15 @@ import {
   ThreadMessage,
   ThreadSummary,
 } from "@inboxos/types";
+import { Button } from "@inboxos/ui/button";
 import { ConfirmDialog } from "@inboxos/ui/confirm-dialog";
 import { OverflowMenu } from "@inboxos/ui/overflow-menu";
 
 import { EmailHtmlPreview } from "./email-html-preview";
+import {
+  NewMessageAttachment,
+  NewMessageComposer,
+} from "./new-message-composer";
 
 type ListTab = "all" | "unread";
 
@@ -58,12 +61,6 @@ type ConfirmState = {
   confirmLabel: string;
   action: ThreadActionName;
 } | null;
-
-type NewMessageAttachment = {
-  id: string;
-  file: File;
-  previewUrl: string;
-};
 
 const PAGE_SIZE = 20;
 const EMPTY_MAILBOX_COUNTS: MailboxCounts = {
@@ -233,16 +230,6 @@ function hasHtmlPreview(message: ThreadMessage): boolean {
   return Boolean(message.body_html?.trim());
 }
 
-function formatAttachmentSize(size: number): string {
-  if (size < 1024) {
-    return `${size} B`;
-  }
-  if (size < 1024 * 1024) {
-    return `${Math.round(size / 1024)} KB`;
-  }
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function revokeAttachmentPreviews(attachments: NewMessageAttachment[]): void {
   for (const attachment of attachments) {
     URL.revokeObjectURL(attachment.previewUrl);
@@ -298,8 +285,6 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   const listScrollerRef = useRef<HTMLDivElement | null>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
-  const newMessageToRef = useRef<HTMLInputElement | null>(null);
-  const newMessageFileInputRef = useRef<HTMLInputElement | null>(null);
   const newMessageAttachmentsRef = useRef<NewMessageAttachment[]>([]);
 
   const unreadOnly = listTab === "unread";
@@ -402,9 +387,6 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
       revokeAttachmentPreviews(current);
       return [];
     });
-    if (newMessageFileInputRef.current) {
-      newMessageFileInputRef.current.value = "";
-    }
   }, []);
 
   useEffect(() => {
@@ -416,19 +398,6 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
       revokeAttachmentPreviews(newMessageAttachmentsRef.current);
     };
   }, []);
-
-  useEffect(() => {
-    if (!newMessageOpen) {
-      return;
-    }
-
-    const frame = window.requestAnimationFrame(() => {
-      newMessageToRef.current?.focus();
-    });
-    return () => {
-      window.cancelAnimationFrame(frame);
-    };
-  }, [newMessageOpen]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1222,206 +1191,39 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
         }}
       />
 
-      {newMessageOpen ? (
-        <div
-          className="overlay-backdrop"
-          onClick={closeNewMessageComposer}
-          role="presentation"
-        >
-          <div
-            className={`overlay-card mail-compose-modal${newMessageMaximized ? " maximized" : ""}${newMessageMinimized ? " minimized" : ""}`}
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="New email composer"
-          >
-            <div className="mail-compose-topbar">
-              <div className="mail-compose-window-controls">
-                <button
-                  type="button"
-                  className="mail-compose-window-dot close"
-                  aria-label="Close composer"
-                  onClick={closeNewMessageComposer}
-                  disabled={sendingNewMessage}
-                />
-                <button
-                  type="button"
-                  className="mail-compose-window-dot minimize"
-                  aria-label={
-                    newMessageMinimized
-                      ? "Expand composer"
-                      : "Minimize composer"
-                  }
-                  onClick={toggleNewMessageMinimized}
-                />
-                <button
-                  type="button"
-                  className="mail-compose-window-dot zoom"
-                  aria-label={
-                    newMessageMaximized
-                      ? "Restore composer size"
-                      : "Expand composer size"
-                  }
-                  onClick={toggleNewMessageMaximized}
-                />
-              </div>
-              <div className="mail-compose-toolbar-group">
-                <button
-                  type="button"
-                  className="mail-compose-toolbar-button"
-                  onClick={() => newMessageFileInputRef.current?.click()}
-                  aria-label="Attach files"
-                  title="Attach files"
-                >
-                  <Paperclip size={14} />
-                </button>
-                <div className="mail-compose-schedule-wrap">
-                  <button
-                    type="button"
-                    className="mail-compose-toolbar-button"
-                    onClick={() => setScheduleMenuOpen((current) => !current)}
-                    aria-haspopup="menu"
-                    aria-expanded={scheduleMenuOpen}
-                    aria-label="Schedule send"
-                    title="Schedule send"
-                  >
-                    <Clock size={14} />
-                    <ChevronDown size={14} />
-                  </button>
-                  {scheduleMenuOpen ? (
-                    <div className="mail-compose-schedule-menu" role="menu">
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          setScheduleMenuOpen(false);
-                          void sendNewMessage();
-                        }}
-                      >
-                        Send now
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          setScheduleMenuOpen(false);
-                          setNotice(
-                            "Send at 8:00 am is not available in gamma yet.",
-                          );
-                        }}
-                      >
-                        Send at 8:00 am
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-                <input
-                  ref={newMessageFileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  hidden
-                  onChange={handleNewMessageAttachments}
-                />
-              </div>
-              <div className="mail-compose-topbar-actions">
-                <button
-                  type="button"
-                  className="mail-compose-send-button"
-                  onClick={() => void sendNewMessage()}
-                  disabled={!canSendNewMessage}
-                  aria-label={sendingNewMessage ? "Sending" : "Send"}
-                  title={sendingNewMessage ? "Sending" : "Send"}
-                >
-                  <Send size={15} />
-                </button>
-              </div>
-            </div>
-
-            {!newMessageMinimized ? (
-              <div className="mail-compose-form">
-                <div className="mail-compose-fields">
-                  <label className="mail-compose-row">
-                    <span>To:</span>
-                    <input
-                      ref={newMessageToRef}
-                      value={newMessageTo}
-                      onChange={(event) => setNewMessageTo(event.target.value)}
-                      aria-label="Message recipients"
-                    />
-                  </label>
-                  <label className="mail-compose-row">
-                    <span>Subject:</span>
-                    <input
-                      value={newMessageSubject}
-                      onChange={(event) =>
-                        setNewMessageSubject(event.target.value)
-                      }
-                      aria-label="Message subject"
-                    />
-                  </label>
-                  <div className="mail-compose-row mail-compose-row-static">
-                    <span>From:</span>
-                    <div className="mail-compose-static-value">
-                      {accountLabel}
-                      {session?.account_email
-                        ? ` - ${session.account_email}`
-                        : ""}
-                    </div>
-                  </div>
-                </div>
-
-                {newMessageAttachments.length > 0 ? (
-                  <div
-                    className="mail-compose-attachments"
-                    aria-label="Selected image attachments"
-                  >
-                    {newMessageAttachments.map((attachment) => (
-                      <article
-                        key={attachment.id}
-                        className="mail-compose-attachment-card"
-                      >
-                        <img
-                          src={attachment.previewUrl}
-                          alt={attachment.file.name}
-                          className="mail-compose-attachment-preview"
-                        />
-                        <div className="mail-compose-attachment-meta">
-                          <strong title={attachment.file.name}>
-                            {attachment.file.name}
-                          </strong>
-                          <span>
-                            {formatAttachmentSize(attachment.file.size)}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          className="mail-compose-attachment-remove"
-                          aria-label={`Remove ${attachment.file.name}`}
-                          onClick={() =>
-                            removeNewMessageAttachment(attachment.id)
-                          }
-                        >
-                          <X size={14} />
-                        </button>
-                      </article>
-                    ))}
-                  </div>
-                ) : null}
-
-                <label className="mail-compose-body-wrap">
-                  <textarea
-                    value={newMessageBody}
-                    onChange={(event) => setNewMessageBody(event.target.value)}
-                    className="mail-compose-body"
-                    aria-label="Message body"
-                  />
-                </label>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
+      <NewMessageComposer
+        open={newMessageOpen}
+        sending={sendingNewMessage}
+        minimized={newMessageMinimized}
+        maximized={newMessageMaximized}
+        scheduleMenuOpen={scheduleMenuOpen}
+        to={newMessageTo}
+        subject={newMessageSubject}
+        body={newMessageBody}
+        attachments={newMessageAttachments}
+        accountLabel={accountLabel}
+        accountEmail={session?.account_email}
+        canSend={canSendNewMessage}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeNewMessageComposer();
+          }
+        }}
+        onToggleMinimized={toggleNewMessageMinimized}
+        onToggleMaximized={toggleNewMessageMaximized}
+        onScheduleMenuOpenChange={setScheduleMenuOpen}
+        onToChange={setNewMessageTo}
+        onSubjectChange={setNewMessageSubject}
+        onBodyChange={setNewMessageBody}
+        onAttachmentsChange={handleNewMessageAttachments}
+        onRemoveAttachment={removeNewMessageAttachment}
+        onSend={() => {
+          void sendNewMessage();
+        }}
+        onScheduleAtEight={() => {
+          setNotice("Send at 8:00 am is not available in gamma yet.");
+        }}
+      />
     </>
   );
 }

@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Clock3,
   MapPin,
-  Trash2,
 } from "lucide-react";
 
 import { api } from "@inboxos/lib/api";
@@ -16,6 +15,11 @@ import {
   CalendarEvent as ApiCalendarEvent,
 } from "@inboxos/types";
 import { ConfirmDialog } from "@inboxos/ui/confirm-dialog";
+
+import {
+  CalendarCreateEventDialog,
+  CalendarEventDetailsDialog,
+} from "./calendar-dialogs";
 
 type ViewMode = "day" | "week" | "month";
 type EventTone = "blue" | "green" | "amber" | "rose";
@@ -788,201 +792,26 @@ export function CalendarWorkspace() {
         </aside>
       </main>
 
-      {showEventForm ? (
-        <div
-          className="overlay-backdrop"
-          onClick={() => setShowEventForm(false)}
-          role="presentation"
-        >
-          <div
-            className="overlay-card calendar-modal"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-          >
-            <div className="overlay-copy">
-              <h2>Create event</h2>
-              <p>Add an event to your primary Google Calendar.</p>
-            </div>
-            <form className="calendar-form" onSubmit={submitEvent}>
-              <input
-                value={eventForm.title}
-                onChange={(event) =>
-                  setEventForm((current) => ({
-                    ...current,
-                    title: event.target.value,
-                  }))
-                }
-                placeholder="Event title"
-                aria-label="Event title"
-              />
-              <label className="calendar-checkbox">
-                <input
-                  type="checkbox"
-                  checked={eventForm.isAllDay}
-                  onChange={(event) =>
-                    setEventForm((current) => ({
-                      ...current,
-                      isAllDay: event.target.checked,
-                      startsAt: event.target.checked
-                        ? dateKey(selectedDate)
-                        : current.startsAt,
-                      endsAt: event.target.checked
-                        ? dateKey(selectedDate)
-                        : current.endsAt,
-                    }))
-                  }
-                />
-                All day
-              </label>
-              {eventForm.isAllDay ? (
-                <div className="calendar-form-grid">
-                  <input
-                    type="date"
-                    value={eventForm.startsAt}
-                    onChange={(event) =>
-                      setEventForm((current) => ({
-                        ...current,
-                        startsAt: event.target.value,
-                      }))
-                    }
-                    aria-label="Start date"
-                  />
-                  <input
-                    type="date"
-                    value={eventForm.endsAt}
-                    onChange={(event) =>
-                      setEventForm((current) => ({
-                        ...current,
-                        endsAt: event.target.value,
-                      }))
-                    }
-                    aria-label="End date"
-                  />
-                </div>
-              ) : (
-                <div className="calendar-form-grid">
-                  <input
-                    type="datetime-local"
-                    value={eventForm.startsAt}
-                    onChange={(event) =>
-                      setEventForm((current) => ({
-                        ...current,
-                        startsAt: event.target.value,
-                      }))
-                    }
-                    aria-label="Start time"
-                  />
-                  <input
-                    type="datetime-local"
-                    value={eventForm.endsAt}
-                    onChange={(event) =>
-                      setEventForm((current) => ({
-                        ...current,
-                        endsAt: event.target.value,
-                      }))
-                    }
-                    aria-label="End time"
-                  />
-                </div>
-              )}
-              <input
-                value={eventForm.location}
-                onChange={(event) =>
-                  setEventForm((current) => ({
-                    ...current,
-                    location: event.target.value,
-                  }))
-                }
-                placeholder="Location"
-                aria-label="Event location"
-              />
-              <textarea
-                value={eventForm.description}
-                onChange={(event) =>
-                  setEventForm((current) => ({
-                    ...current,
-                    description: event.target.value,
-                  }))
-                }
-                placeholder="Description"
-                aria-label="Event description"
-              />
-              <div className="overlay-actions">
-                <button type="button" onClick={() => setShowEventForm(false)}>
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn-primary"
-                  disabled={submittingEvent}
-                >
-                  {submittingEvent ? "Creating..." : "Create event"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : null}
+      <CalendarCreateEventDialog
+        open={showEventForm}
+        eventForm={eventForm}
+        selectedDateKey={dateKey(selectedDate)}
+        submitting={submittingEvent}
+        onOpenChange={setShowEventForm}
+        setEventForm={setEventForm}
+        onSubmit={submitEvent}
+      />
 
-      {selectedEvent ? (
-        <div
-          className="overlay-backdrop"
-          onClick={() => setSelectedEventId(null)}
-          role="presentation"
-        >
-          <div
-            className="overlay-card calendar-modal"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-          >
-            <div className="overlay-copy">
-              <h2>{selectedEvent.title}</h2>
-              <p>
-                {formatTimeRange(
-                  selectedEvent.startsAt,
-                  selectedEvent.endsAt,
-                  selectedEvent.isAllDay,
-                )}
-              </p>
-            </div>
-            <div className="calendar-event-detail">
-              <p>
-                <MapPin size={13} />
-                {selectedEvent.location}
-              </p>
-              {selectedEvent.description ? (
-                <p>{selectedEvent.description}</p>
-              ) : null}
-              {selectedEvent.htmlLink ? (
-                <a
-                  href={selectedEvent.htmlLink}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Open in Google Calendar
-                </a>
-              ) : null}
-            </div>
-            <div className="overlay-actions">
-              <button type="button" onClick={() => setSelectedEventId(null)}>
-                Close
-              </button>
-              {selectedEvent.canDelete ? (
-                <button
-                  type="button"
-                  className="btn-danger"
-                  onClick={() => setShowDeleteConfirm(true)}
-                >
-                  <Trash2 size={14} />
-                  Delete event
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <CalendarEventDetailsDialog
+        event={selectedEvent}
+        formatTimeRange={formatTimeRange}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedEventId(null);
+          }
+        }}
+        onDeleteRequest={() => setShowDeleteConfirm(true)}
+      />
 
       <ConfirmDialog
         open={showDeleteConfirm}

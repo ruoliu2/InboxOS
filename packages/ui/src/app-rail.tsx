@@ -14,11 +14,17 @@ export function AppRail() {
   const pathname = usePathname();
 
   return (
-    <aside className="app-rail" aria-label="App switcher">
-      <div className="rail-brand" title="InboxOS">
+    <aside
+      className="flex flex-col items-center gap-2 border-r border-[var(--line)] bg-[#f1f3f7] px-[5px] py-[7px]"
+      aria-label="App switcher"
+    >
+      <div
+        className="grid h-8 w-8 place-items-center rounded-[9px] bg-[#1d4ed8] text-[0.66rem] font-bold text-white"
+        title="InboxOS"
+      >
         IO
       </div>
-      <nav className="rail-nav">
+      <nav className="grid gap-1.5">
         {items.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -26,7 +32,12 @@ export function AppRail() {
             <Link
               key={item.href}
               href={item.href}
-              className={`rail-link ${active ? "active" : ""}`.trim()}
+              className={[
+                "grid h-8 w-8 place-items-center rounded-[9px] border border-transparent text-[#475569] transition-colors",
+                active
+                  ? "border-[#d7deea] bg-white text-[#111827]"
+                  : "hover:border-[#d7deea] hover:bg-white hover:text-[#111827]",
+              ].join(" ")}
               title={item.label}
               aria-label={item.label}
             >

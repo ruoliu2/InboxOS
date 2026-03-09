@@ -94,10 +94,12 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ### Frontend
 
 ```bash
-cd apps/web
 bun install
+cd apps/web
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 bun run dev
 ```
+
+Run `bun install` from the repo root so local development matches the Docker workspace install.
 
 ### Full Stack With Docker
 

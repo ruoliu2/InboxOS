@@ -1,5 +1,8 @@
 "use client";
 
+import { Button } from "./button";
+import { Dialog, DialogContent } from "./dialog";
+
 type ConfirmDialogProps = {
   open: boolean;
   title: string;
@@ -23,37 +26,45 @@ export function ConfirmDialog({
   onClose,
   onConfirm,
 }: ConfirmDialogProps) {
-  if (!open) {
-    return null;
-  }
-
   return (
-    <div className="overlay-backdrop" onClick={onClose} role="presentation">
-      <div
-        className="overlay-card confirm-dialog"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent
         aria-labelledby="confirm-dialog-title"
+        className="w-[min(420px,calc(100vw-24px))] rounded-[18px] border-[var(--line)] bg-white p-0 shadow-[0_18px_44px_rgba(15,23,42,0.12)]"
       >
-        <div className="overlay-copy">
-          <h2 id="confirm-dialog-title">{title}</h2>
-          <p>{body}</p>
+        <div className="border-b border-[var(--line)] px-6 py-5">
+          <h2
+            id="confirm-dialog-title"
+            className="m-0 text-[1.02rem] font-semibold text-[var(--text)]"
+          >
+            {title}
+          </h2>
+          <p className="mt-1 text-[0.86rem] text-[var(--muted)]">{body}</p>
         </div>
-        <div className="overlay-actions">
-          <button type="button" onClick={onClose} disabled={busy}>
-            {cancelLabel}
-          </button>
-          <button
+        <div className="flex justify-end gap-2 px-6 py-4">
+          <Button
             type="button"
-            className={confirmTone === "danger" ? "btn-danger" : "btn-primary"}
+            variant="outline"
+            onClick={onClose}
+            disabled={busy}
+          >
+            {cancelLabel}
+          </Button>
+          <Button
+            type="button"
+            variant={confirmTone === "danger" ? "outline" : "default"}
+            className={
+              confirmTone === "danger"
+                ? "border-[#fecdd3] text-[#be123c] hover:bg-[#fff1f2]"
+                : undefined
+            }
             onClick={onConfirm}
             disabled={busy}
           >
             {busy ? "Working..." : confirmLabel}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
