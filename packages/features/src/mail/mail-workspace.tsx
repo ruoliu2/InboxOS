@@ -328,6 +328,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   const hydrationEpochRef = useRef(0);
   const hydratedIdsRef = useRef<Set<string>>(new Set());
   const hydratingIdsRef = useRef<Set<string>>(new Set());
+  const preserveInitialSelectionRef = useRef(Boolean(initialThreadId));
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const listScrollerRef = useRef<HTMLDivElement | null>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
@@ -606,10 +607,19 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
       return;
     }
 
-    setSelectedThreadId(null);
-    setSelectedThread(null);
     setShowMoreMenu(false);
     resetHydration();
+    const shouldPreserveInitialSelection =
+      preserveInitialSelectionRef.current &&
+      mailbox === "inbox" &&
+      !unreadOnly &&
+      !searchQuery;
+    if (shouldPreserveInitialSelection) {
+      preserveInitialSelectionRef.current = false;
+    } else {
+      setSelectedThreadId(null);
+      setSelectedThread(null);
+    }
     void loadInitialThreads();
   }, [
     loadInitialThreads,
@@ -641,6 +651,12 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   }, [selectedThreadId]);
 
   useEffect(() => {
+    if (!sessionChecked || !session?.authenticated) {
+      threadRequestIdRef.current += 1;
+      setLoadingThread(false);
+      return;
+    }
+
     if (!selectedThreadId) {
       threadRequestIdRef.current += 1;
       setSelectedThread(null);
@@ -687,7 +703,12 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
           setLoadingThread(false);
         }
       });
-  }, [handleAuthError, selectedThreadId]);
+  }, [
+    handleAuthError,
+    selectedThreadId,
+    session?.authenticated,
+    sessionChecked,
+  ]);
 
   useEffect(() => {
     if (loadingList || loadingMore || !hasMore || !loadMoreTriggerRef.current) {
