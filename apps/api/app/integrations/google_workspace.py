@@ -292,15 +292,21 @@ class GoogleWorkspaceClient:
             "GET",
             f"{GMAIL_API_BASE}/history",
             access_token=access_token,
-            params={
-                "startHistoryId": start_history_id,
-                "historyTypes": "messageAdded",
-                "fields": (
-                    "history(id,messagesAdded/message/threadId,"
-                    "messagesDeleted/message/threadId,labelsAdded/message/threadId,"
-                    "labelsRemoved/message/threadId),historyId"
+            params=[
+                ("startHistoryId", start_history_id),
+                ("historyTypes", "messageAdded"),
+                ("historyTypes", "messageDeleted"),
+                ("historyTypes", "labelAdded"),
+                ("historyTypes", "labelRemoved"),
+                (
+                    "fields",
+                    (
+                        "history(id,messagesAdded/message/threadId,"
+                        "messagesDeleted/message/threadId,labelsAdded/message/threadId,"
+                        "labelsRemoved/message/threadId),historyId"
+                    ),
                 ),
-            },
+            ],
         )
         changed_ids: list[str] = []
         deleted_ids: list[str] = []

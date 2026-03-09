@@ -1,4 +1,5 @@
 import base64
+import hmac
 import json
 from datetime import UTC, datetime
 from mimetypes import guess_type
@@ -74,6 +75,22 @@ def require_active_google_account(session: AuthSessionRecord) -> tuple[str, str]
             detail="An active linked Google account is required.",
         )
     return session.account_email, session.access_token
+
+
+def runtime_error_to_http_exception(exc: RuntimeError) -> HTTPException:
+    detail = str(exc)
+    normalized = detail.lower()
+    if any(
+        marker in normalized
+        for marker in (
+            "active linked google account",
+            "linked account not found",
+            "provider credentials",
+            "google credential expired",
+        )
+    ):
+        return HTTPException(status_code=401, detail=detail)
+    return HTTPException(status_code=502, detail=detail)
 
 
 def request_origin(value: str | None) -> str | None:
@@ -233,7 +250,7 @@ def list_gmail_threads(
     except GoogleAPIError as exc:
         raise HTTPException(status_code=exc.app_status_code, detail=str(exc)) from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise runtime_error_to_http_exception(exc) from exc
 
     ready_threads = [
         thread for thread in page.threads if isinstance(thread, ThreadSummary)
@@ -260,7 +277,7 @@ def hydrate_gmail_threads(
     except GoogleAPIError as exc:
         raise HTTPException(status_code=exc.app_status_code, detail=str(exc)) from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise runtime_error_to_http_exception(exc) from exc
 
     if response.threads:
         persist_threads(
@@ -287,7 +304,7 @@ def get_gmail_mailbox_counts(
     except GoogleAPIError as exc:
         raise HTTPException(status_code=exc.app_status_code, detail=str(exc)) from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise runtime_error_to_http_exception(exc) from exc
 
 
 @router.get("/threads/{thread_id}", response_model=ThreadDetail)
@@ -614,11 +631,15 @@ async def gmail_watch_notification(
     service: GmailMailboxService = Depends(get_gmail_mailbox_service),
 ) -> dict[str, bool]:
     expected_token = (get_settings().gmail_watch_pubsub_token or "").strip()
-    if expected_token:
-        auth_header = request.headers.get("authorization", "")
-        bearer = auth_header.removeprefix("Bearer ").strip() if auth_header else ""
-        if bearer != expected_token:
-            raise HTTPException(status_code=401, detail="Invalid Gmail watch token.")
+    if not expected_token:
+        raise HTTPException(
+            status_code=503,
+            detail="Gmail watch token is not configured.",
+        )
+    auth_header = request.headers.get("authorization", "")
+    bearer = auth_header.removeprefix("Bearer ").strip() if auth_header else ""
+    if not hmac.compare_digest(bearer, expected_token):
+        raise HTTPException(status_code=401, detail="Invalid Gmail watch token.")
 
     payload = await request.json()
     message = payload.get("message", {}) if isinstance(payload, dict) else {}
@@ -646,5 +667,5 @@ async def gmail_watch_notification(
                 status_code=exc.app_status_code, detail=str(exc)
             ) from exc
         except RuntimeError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            raise runtime_error_to_http_exception(exc) from exc
     return {"accepted": True}

@@ -1248,7 +1248,7 @@ export function MailWorkspace({
                 return (
                   <button
                     key={thread.id}
-                    className={`mail-card ${thread.id === selectedThreadId ? "active" : ""} ${readyThread ? "" : "mail-card-placeholder"}`.trim()}
+                    className={`mail-card ${thread.id === selectedThreadId ? "active" : ""} ${readyThread ? "" : "border-dashed border-[#d6dce6] text-[var(--muted)]"}`.trim()}
                     disabled={!readyThread && thread.id.startsWith("skeleton-")}
                     onClick={() => {
                       if (thread.id === selectedThreadId) {
@@ -1287,14 +1287,11 @@ export function MailWorkspace({
                         </div>
                       </>
                     ) : (
-                      <div
-                        className="mail-card-placeholder-content"
-                        aria-hidden
-                      >
-                        <div className="mail-card-skeleton mail-card-skeleton-title" />
-                        <div className="mail-card-skeleton mail-card-skeleton-subject" />
-                        <div className="mail-card-skeleton mail-card-skeleton-line" />
-                        <div className="mail-card-skeleton mail-card-skeleton-line short" />
+                      <div className="grid w-full gap-2.5" aria-hidden>
+                        <div className="h-2.5 w-[46%] animate-pulse rounded-full bg-[#eef1f5]" />
+                        <div className="h-2.5 w-[72%] animate-pulse rounded-full bg-[#eef1f5]" />
+                        <div className="h-2.5 w-full animate-pulse rounded-full bg-[#eef1f5]" />
+                        <div className="h-2.5 w-[64%] animate-pulse rounded-full bg-[#eef1f5]" />
                       </div>
                     )}
                   </button>

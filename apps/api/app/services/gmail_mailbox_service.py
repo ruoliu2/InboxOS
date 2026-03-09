@@ -51,8 +51,11 @@ class GmailMailboxService:
     ) -> ThreadSummaryPage | None:
         if page_token is not None or query is not None:
             return None
+        linked_account_id = session.active_linked_account_id
+        if not linked_account_id:
+            return None
         return self.mailbox_store.get_thread_page(
-            session.active_linked_account_id or "",
+            linked_account_id,
             mailbox_key=mailbox.value,
             unread_only=unread_only,
             query=query,
@@ -165,7 +168,9 @@ class GmailMailboxService:
     def get_cached_mailbox_counts(
         self, session: AuthSessionRecord
     ) -> MailboxCountsResponse | None:
-        linked_account_id = session.active_linked_account_id or ""
+        linked_account_id = session.active_linked_account_id
+        if not linked_account_id:
+            return None
         return self.mailbox_store.get_mailbox_counts(linked_account_id)
 
     def refresh_mailbox_counts(

@@ -22,6 +22,7 @@ from app.schemas.thread import (
     ComposeMode,
     ComposeThreadRequest,
     MailboxCountsResponse,
+    MailboxKey,
     SendGmailMessageRequest,
     ThreadDetail,
     ThreadInlineAsset,
@@ -903,7 +904,89 @@ def test_gmail_mailbox_counts_route_returns_cached_counts_before_refresh(
     assert response.json()["trash"] == 3
 
 
+def test_gmail_mailbox_service_skips_cached_page_without_active_linked_account():
+    service = get_gmail_mailbox_service()
+    session = build_session(active_linked_account_id=None)
+
+    page = service.get_cached_thread_page(
+        session,
+        mailbox=MailboxKey.INBOX,
+        unread_only=False,
+        query=None,
+        page_token=None,
+    )
+
+    assert page is None
+
+
+def test_gmail_mailbox_service_skips_cached_counts_without_active_linked_account():
+    service = get_gmail_mailbox_service()
+    session = build_session(active_linked_account_id=None)
+
+    counts = service.get_cached_mailbox_counts(session)
+
+    assert counts is None
+
+
+def test_gmail_threads_route_returns_401_for_missing_linked_account(
+    client, monkeypatch
+):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
+
+    service = get_gmail_mailbox_service()
+    monkeypatch.setattr(service, "get_cached_thread_page", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        service,
+        "list_thread_page",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            RuntimeError("An active linked Google account is required.")
+        ),
+    )
+
+    response = client.get("/gmail/threads")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "An active linked Google account is required."
+
+
+def test_gmail_mailbox_counts_route_returns_401_for_missing_linked_account(
+    client, monkeypatch
+):
+    auth_store = get_auth_store()
+    session = build_session()
+    auth_store.upsert_session(session)
+    client.cookies.set(
+        get_settings().session_cookie_name,
+        session.session_id,
+        domain="testserver.local",
+    )
+
+    service = get_gmail_mailbox_service()
+    monkeypatch.setattr(service, "get_cached_mailbox_counts", lambda session: None)
+    monkeypatch.setattr(
+        service,
+        "get_mailbox_counts",
+        lambda session: (_ for _ in ()).throw(
+            RuntimeError("An active linked Google account is required.")
+        ),
+    )
+
+    response = client.get("/gmail/mailbox-counts")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "An active linked Google account is required."
+
+
 def test_gmail_watch_route_forwards_notification_payload(client, monkeypatch):
+    monkeypatch.setenv("GMAIL_WATCH_PUBSUB_TOKEN", "watch-secret")
+    get_settings.cache_clear()
     service = get_gmail_mailbox_service()
     captured: dict[str, str | None] = {}
 
@@ -924,6 +1007,7 @@ def test_gmail_watch_route_forwards_notification_payload(client, monkeypatch):
     response = client.post(
         "/gmail/internal/watch",
         json={"message": {"data": encoded}},
+        headers={"authorization": "Bearer watch-secret"},
     )
 
     assert response.status_code == 200
@@ -931,6 +1015,16 @@ def test_gmail_watch_route_forwards_notification_payload(client, monkeypatch):
         "account_email": "user@gmail.com",
         "history_id": "123456789",
     }
+
+
+def test_gmail_watch_route_requires_configured_token(client):
+    response = client.post(
+        "/gmail/internal/watch",
+        json={"message": {"data": ""}},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Gmail watch token is not configured."
 
 
 def test_compose_route_updates_detail_cache_and_response(client, monkeypatch):
@@ -2252,6 +2346,40 @@ def test_google_client_returns_null_for_missing_mailbox_label_totals(monkeypatch
     assert counts.archive is None
     assert counts.trash is None
     assert counts.junk is None
+
+
+def test_google_client_requests_all_history_types(monkeypatch):
+    google_client = get_google_workspace_client()
+    captured: dict[str, object] = {}
+
+    def fake_request(method: str, url: str, **kwargs):
+        captured["method"] = method
+        captured["url"] = url
+        captured["params"] = kwargs.get("params")
+        return {"history": [], "historyId": "42"}
+
+    monkeypatch.setattr(google_client, "_request", fake_request)
+
+    page = google_client.list_gmail_history("access-token", start_history_id="21")
+
+    assert page.history_id == "42"
+    assert captured["method"] == "GET"
+    assert str(captured["url"]).endswith("/history")
+    assert captured["params"] == [
+        ("startHistoryId", "21"),
+        ("historyTypes", "messageAdded"),
+        ("historyTypes", "messageDeleted"),
+        ("historyTypes", "labelAdded"),
+        ("historyTypes", "labelRemoved"),
+        (
+            "fields",
+            (
+                "history(id,messagesAdded/message/threadId,"
+                "messagesDeleted/message/threadId,labelsAdded/message/threadId,"
+                "labelsRemoved/message/threadId),historyId"
+            ),
+        ),
+    ]
 
 
 def test_google_client_extracts_html_body_breaks():
