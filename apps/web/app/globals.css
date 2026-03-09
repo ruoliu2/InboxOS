@@ -708,6 +708,7 @@ textarea {
 }
 
 .mail-compose-modal {
+  --compose-row-height: 44px;
   width: min(1120px, calc(100vw - 32px));
   height: min(620px, calc(100vh - 40px));
   min-width: 860px;
@@ -744,10 +745,12 @@ textarea {
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 12px;
-  min-height: 40px;
+  height: var(--compose-row-height);
+  min-height: var(--compose-row-height);
   padding: 0 16px;
   border-bottom: 1px solid #e5e7eb;
   background: #fff;
+  box-sizing: border-box;
 }
 
 .mail-compose-window-controls {
@@ -853,9 +856,11 @@ textarea {
   grid-template-columns: 78px minmax(0, 1fr);
   align-items: center;
   gap: 10px;
-  min-height: 40px;
+  height: var(--compose-row-height);
+  min-height: var(--compose-row-height);
   padding: 0 22px;
   border-bottom: 1px solid #ececec;
+  box-sizing: border-box;
 }
 
 .mail-compose-row span {
