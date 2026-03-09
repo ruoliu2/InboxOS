@@ -1,4 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import RedirectResponse
 
 from app.core.config import get_settings
@@ -9,7 +18,8 @@ from app.schemas.auth import (
     LinkedAccountResponse,
 )
 from app.services.auth_service import AuthService
-from app.services.dependencies import get_auth_service
+from app.services.dependencies import get_auth_service, get_gmail_mailbox_service
+from app.services.gmail_mailbox_service import GmailMailboxService
 from app.storage.auth_store import AuthSessionRecord
 
 router = APIRouter()
@@ -78,9 +88,11 @@ def start_google_auth(
 
 @router.get("/google/callback")
 def google_callback(
+    background_tasks: BackgroundTasks,
     code: str | None = Query(default=None),
     state: str | None = Query(default=None),
     service: AuthService = Depends(get_auth_service),
+    mailbox_service: GmailMailboxService = Depends(get_gmail_mailbox_service),
 ) -> Response:
     try:
         result = service.handle_google_callback(code=code, state=state)
@@ -100,6 +112,7 @@ def google_callback(
         status_code=status.HTTP_303_SEE_OTHER,
     )
     service.set_session_cookie(response, result.session)
+    background_tasks.add_task(mailbox_service.seed_session, result.session)
     return response
 
 

@@ -15,11 +15,11 @@ export function AppRail() {
 
   return (
     <aside
-      className="flex flex-col items-center gap-2 border-r border-[var(--line)] bg-[#f1f3f7] px-[5px] py-[7px]"
+      className="flex flex-col items-center gap-2 border-r border-[var(--line)] bg-[#f1f3f7] px-1 py-[7px]"
       aria-label="App switcher"
     >
       <div
-        className="grid h-8 w-8 place-items-center rounded-[9px] bg-[#1d4ed8] text-[0.66rem] font-bold text-white"
+        className="grid h-7 w-7 place-items-center rounded-[8px] bg-[#1d4ed8] text-[0.62rem] font-bold text-white"
         title="InboxOS"
       >
         IO
@@ -33,7 +33,7 @@ export function AppRail() {
               key={item.href}
               href={item.href}
               className={[
-                "grid h-8 w-8 place-items-center rounded-[9px] border border-transparent text-[#475569] transition-colors",
+                "grid h-7 w-7 place-items-center rounded-[8px] border border-transparent text-[#475569] transition-colors",
                 active
                   ? "border-[#d7deea] bg-white text-[#111827]"
                   : "hover:border-[#d7deea] hover:bg-white hover:text-[#111827]",

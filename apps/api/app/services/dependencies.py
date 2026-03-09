@@ -5,9 +5,11 @@ from fastapi import Depends, HTTPException, Request, Response
 from app.core.config import get_settings
 from app.integrations.google_workspace import GoogleWorkspaceClient
 from app.services.auth_service import AuthService
+from app.services.gmail_mailbox_service import GmailMailboxService
 from app.services.task_service import TaskService
 from app.storage.auth_store import AuthSessionRecord, AuthStore, build_auth_store
 from app.storage.conversation_store import ConversationStore, build_conversation_store
+from app.storage.gmail_mailbox_store import GmailMailboxStore, build_gmail_mailbox_store
 from app.storage.mailbox_cache import GmailMailboxCache
 from app.storage.task_store import TaskStore, build_task_store
 
@@ -33,6 +35,11 @@ def get_google_workspace_client() -> GoogleWorkspaceClient:
 
 
 @lru_cache
+def get_gmail_mailbox_store() -> GmailMailboxStore:
+    return build_gmail_mailbox_store(get_settings().database_url)
+
+
+@lru_cache
 def get_gmail_mailbox_cache() -> GmailMailboxCache:
     return GmailMailboxCache(get_settings().gmail_cache_db_path)
 
@@ -52,6 +59,16 @@ def get_auth_service() -> AuthService:
     return AuthService(
         get_auth_store(),
         get_google_workspace_client(),
+        get_settings(),
+    )
+
+
+@lru_cache
+def get_gmail_mailbox_service() -> GmailMailboxService:
+    return GmailMailboxService(
+        get_google_workspace_client(),
+        get_gmail_mailbox_store(),
+        get_auth_store(),
         get_settings(),
     )
 

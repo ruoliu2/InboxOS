@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     google_client_id: str | None = None
     google_client_secret: str | None = None
     google_redirect_uri: str | None = None
+    gmail_watch_topic_name: str | None = None
+    gmail_watch_pubsub_token: str | None = None
     railway_public_domain: str | None = None
     gmail_cache_db_path: str = str(
         Path.home() / ".cache" / "inboxos" / "gmail_mailbox_cache.sqlite3"

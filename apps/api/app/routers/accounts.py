@@ -1,4 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import RedirectResponse
 
 from app.core.config import get_settings
@@ -9,7 +18,12 @@ from app.schemas.auth import (
     LinkedAccountResponse,
 )
 from app.services.auth_service import AuthService
-from app.services.dependencies import get_auth_service, get_current_auth_session
+from app.services.dependencies import (
+    get_auth_service,
+    get_current_auth_session,
+    get_gmail_mailbox_service,
+)
+from app.services.gmail_mailbox_service import GmailMailboxService
 from app.storage.auth_store import AuthSessionRecord
 
 router = APIRouter()
@@ -60,10 +74,12 @@ def start_account_connect(
 
 @router.get("/{provider}/callback")
 def provider_callback(
+    background_tasks: BackgroundTasks,
     provider: str,
     code: str | None = Query(default=None),
     state: str | None = Query(default=None),
     service: AuthService = Depends(get_auth_service),
+    mailbox_service: GmailMailboxService = Depends(get_gmail_mailbox_service),
 ) -> Response:
     try:
         result = service.handle_provider_callback(provider, code=code, state=state)
@@ -83,6 +99,7 @@ def provider_callback(
         status_code=status.HTTP_303_SEE_OTHER,
     )
     service.set_session_cookie(response, result.session)
+    background_tasks.add_task(mailbox_service.seed_session, result.session)
     return response
 
 
@@ -98,10 +115,12 @@ def disconnect_account(
 
 @router.post("/{account_id}/activate", response_model=AuthSessionResponse)
 def activate_account(
+    background_tasks: BackgroundTasks,
     account_id: str,
     response: Response,
     session: AuthSessionRecord = Depends(get_current_auth_session),
     service: AuthService = Depends(get_auth_service),
+    mailbox_service: GmailMailboxService = Depends(get_gmail_mailbox_service),
 ) -> AuthSessionResponse:
     try:
         next_session = service.activate_account(
@@ -112,4 +131,5 @@ def activate_account(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     service.set_session_cookie(response, next_session)
+    background_tasks.add_task(mailbox_service.seed_session, next_session)
     return build_auth_session_response(service, next_session)

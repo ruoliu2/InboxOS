@@ -1,3 +1,6 @@
+import base64
+import hmac
+import json
 from datetime import UTC, datetime
 from mimetypes import guess_type
 from typing import Annotated
@@ -34,6 +37,8 @@ from app.schemas.thread import (
     ThreadActionRequest,
     ThreadActionResponse,
     ThreadDetail,
+    ThreadHydrateRequest,
+    ThreadHydrateResponse,
     ThreadSummary,
     ThreadSummaryPage,
 )
@@ -41,14 +46,18 @@ from app.services.dependencies import (
     get_conversation_store,
     get_current_auth_session,
     get_gmail_mailbox_cache,
+    get_gmail_mailbox_service,
+    get_gmail_mailbox_store,
     get_google_workspace_client,
 )
+from app.services.gmail_mailbox_service import GmailMailboxService
 from app.storage.auth_store import AuthSessionRecord
 from app.storage.conversation_store import (
     ConversationStore,
     build_insight_record,
     new_conversation_record,
 )
+from app.storage.gmail_mailbox_store import GmailMailboxStore
 from app.storage.mailbox_cache import GmailMailboxCache
 
 router = APIRouter()
@@ -59,36 +68,6 @@ MAX_GMAIL_TOTAL_ATTACHMENT_BYTES = 20 * 1024 * 1024
 ATTACHMENT_READ_CHUNK_BYTES = 1024 * 1024
 
 
-def refresh_gmail_thread_page_cache(
-    account_email: str,
-    access_token: str,
-    page_size: int,
-    mailbox: MailboxKey,
-    unread_only: bool,
-    query: str | None,
-    client: GoogleWorkspaceClient,
-    cache: GmailMailboxCache,
-) -> None:
-    try:
-        page = client.list_gmail_threads(
-            access_token,
-            max_results=page_size,
-            mailbox=mailbox,
-            unread_only=unread_only,
-            query=query,
-        )
-    except RuntimeError:
-        return
-    cache.store_thread_page(
-        account_email,
-        page=page,
-        mailbox_key=mailbox.value,
-        unread_only=unread_only,
-        query=query,
-        page_key=None,
-    )
-
-
 def require_active_google_account(session: AuthSessionRecord) -> tuple[str, str]:
     if not session.account_email or not session.access_token:
         raise HTTPException(
@@ -96,6 +75,22 @@ def require_active_google_account(session: AuthSessionRecord) -> tuple[str, str]
             detail="An active linked Google account is required.",
         )
     return session.account_email, session.access_token
+
+
+def runtime_error_to_http_exception(exc: RuntimeError) -> HTTPException:
+    detail = str(exc)
+    normalized = detail.lower()
+    if any(
+        marker in normalized
+        for marker in (
+            "active linked google account",
+            "linked account not found",
+            "provider credentials",
+            "google credential expired",
+        )
+    ):
+        return HTTPException(status_code=401, detail=detail)
+    return HTTPException(status_code=502, detail=detail)
 
 
 def request_origin(value: str | None) -> str | None:
@@ -144,6 +139,17 @@ def close_uploads(uploads: list[UploadFile]) -> None:
             upload.file.close()
         except Exception:
             continue
+
+
+def to_thread_summary(thread: ThreadDetail) -> ThreadSummary:
+    return ThreadSummary(
+        id=thread.id,
+        subject=thread.subject,
+        snippet=thread.snippet,
+        participants=thread.participants,
+        last_message_at=thread.last_message_at,
+        action_states=thread.action_states,
+    )
 
 
 def persist_threads(
@@ -198,45 +204,44 @@ def list_gmail_threads(
     unread_only: bool = Query(default=False),
     q: str | None = Query(default=None),
     session: AuthSessionRecord = Depends(get_current_auth_session),
-    client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
-    cache: GmailMailboxCache = Depends(get_gmail_mailbox_cache),
+    service: GmailMailboxService = Depends(get_gmail_mailbox_service),
     conversation_store: ConversationStore = Depends(get_conversation_store),
 ) -> ThreadSummaryPage:
-    account_email, access_token = require_active_google_account(session)
     query = (q or "").strip() or None
-
-    if page_token is None and query is None:
-        cached_page = cache.get_thread_page(
-            account_email,
-            mailbox_key=mailbox.value,
-            unread_only=unread_only,
-            query=query,
-            page_key=None,
-        )
-        if cached_page is not None:
+    cached_page = service.get_cached_thread_page(
+        session,
+        mailbox=mailbox,
+        unread_only=unread_only,
+        query=query,
+        page_token=page_token,
+    )
+    if cached_page is not None:
+        ready_threads = [
+            thread
+            for thread in cached_page.threads
+            if isinstance(thread, ThreadSummary)
+        ]
+        if ready_threads:
             persist_threads(
                 session,
                 conversation_store,
-                cached_page.threads,
+                ready_threads,
                 source_folder=mailbox.value,
             )
-            background_tasks.add_task(
-                refresh_gmail_thread_page_cache,
-                account_email,
-                access_token,
-                page_size,
-                mailbox,
-                unread_only,
-                query,
-                client,
-                cache,
-            )
-            return cached_page
+        background_tasks.add_task(
+            service.refresh_thread_page_cache,
+            session,
+            page_size=page_size,
+            mailbox=mailbox,
+            unread_only=unread_only,
+            query=query,
+        )
+        return cached_page
 
     try:
-        page = client.list_gmail_threads(
-            access_token,
-            max_results=page_size,
+        page = service.list_thread_page(
+            session,
+            page_size=page_size,
             page_token=page_token,
             mailbox=mailbox,
             unread_only=unread_only,
@@ -245,37 +250,61 @@ def list_gmail_threads(
     except GoogleAPIError as exc:
         raise HTTPException(status_code=exc.app_status_code, detail=str(exc)) from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise runtime_error_to_http_exception(exc) from exc
 
-    cache.store_thread_page(
-        account_email,
-        page=page,
-        mailbox_key=mailbox.value,
-        unread_only=unread_only,
-        query=query,
-        page_key=page_token,
-    )
-    persist_threads(
-        session,
-        conversation_store,
-        page.threads,
-        source_folder=mailbox.value,
-    )
+    ready_threads = [
+        thread for thread in page.threads if isinstance(thread, ThreadSummary)
+    ]
+    if ready_threads:
+        persist_threads(
+            session,
+            conversation_store,
+            ready_threads,
+            source_folder=mailbox.value,
+        )
     return page
+
+
+@router.post("/threads/hydrate", response_model=ThreadHydrateResponse)
+def hydrate_gmail_threads(
+    payload: ThreadHydrateRequest,
+    session: AuthSessionRecord = Depends(get_current_auth_session),
+    service: GmailMailboxService = Depends(get_gmail_mailbox_service),
+    conversation_store: ConversationStore = Depends(get_conversation_store),
+) -> ThreadHydrateResponse:
+    try:
+        response = service.hydrate_threads(session, payload.thread_ids)
+    except GoogleAPIError as exc:
+        raise HTTPException(status_code=exc.app_status_code, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise runtime_error_to_http_exception(exc) from exc
+
+    if response.threads:
+        persist_threads(
+            session,
+            conversation_store,
+            list(response.threads.values()),
+            source_folder=None,
+        )
+    return response
 
 
 @router.get("/mailbox-counts", response_model=MailboxCountsResponse)
 def get_gmail_mailbox_counts(
+    background_tasks: BackgroundTasks,
     session: AuthSessionRecord = Depends(get_current_auth_session),
-    client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
+    service: GmailMailboxService = Depends(get_gmail_mailbox_service),
 ) -> MailboxCountsResponse:
-    _, access_token = require_active_google_account(session)
+    cached = service.get_cached_mailbox_counts(session)
+    if cached is not None:
+        background_tasks.add_task(service.refresh_mailbox_counts_safe, session)
+        return cached
     try:
-        return client.get_gmail_mailbox_counts(access_token)
+        return service.get_mailbox_counts(session)
     except GoogleAPIError as exc:
         raise HTTPException(status_code=exc.app_status_code, detail=str(exc)) from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise runtime_error_to_http_exception(exc) from exc
 
 
 @router.get("/threads/{thread_id}", response_model=ThreadDetail)
@@ -284,6 +313,7 @@ def get_gmail_thread(
     session: AuthSessionRecord = Depends(get_current_auth_session),
     client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
     cache: GmailMailboxCache = Depends(get_gmail_mailbox_cache),
+    mailbox_store: GmailMailboxStore = Depends(get_gmail_mailbox_store),
     conversation_store: ConversationStore = Depends(get_conversation_store),
 ) -> ThreadDetail:
     account_email, access_token = require_active_google_account(session)
@@ -295,6 +325,11 @@ def get_gmail_thread(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     cache.upsert_thread_detail(account_email, thread)
+    if session.active_linked_account_id:
+        mailbox_store.upsert_thread_summaries(
+            session.active_linked_account_id,
+            [to_thread_summary(thread)],
+        )
     persist_threads(
         session,
         conversation_store,
@@ -311,6 +346,7 @@ def reply_to_gmail_thread(
     session: AuthSessionRecord = Depends(get_current_auth_session),
     client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
     cache: GmailMailboxCache = Depends(get_gmail_mailbox_cache),
+    mailbox_store: GmailMailboxStore = Depends(get_gmail_mailbox_store),
     conversation_store: ConversationStore = Depends(get_conversation_store),
 ) -> ReplyToThreadResponse:
     account_email, access_token = require_active_google_account(session)
@@ -328,6 +364,12 @@ def reply_to_gmail_thread(
 
     cache.invalidate_account_pages(account_email)
     cache.upsert_thread_detail(account_email, result.thread)
+    if session.active_linked_account_id:
+        mailbox_store.invalidate_account_pages(session.active_linked_account_id)
+        mailbox_store.upsert_thread_summaries(
+            session.active_linked_account_id,
+            [to_thread_summary(result.thread)],
+        )
     persist_threads(
         session,
         conversation_store,
@@ -348,6 +390,7 @@ def compose_gmail_thread(
     session: AuthSessionRecord = Depends(get_current_auth_session),
     client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
     cache: GmailMailboxCache = Depends(get_gmail_mailbox_cache),
+    mailbox_store: GmailMailboxStore = Depends(get_gmail_mailbox_store),
     conversation_store: ConversationStore = Depends(get_conversation_store),
 ) -> ComposeThreadResponse:
     account_email, access_token = require_active_google_account(session)
@@ -365,6 +408,12 @@ def compose_gmail_thread(
 
     cache.invalidate_account_pages(account_email)
     cache.upsert_thread_detail(account_email, result.thread)
+    if session.active_linked_account_id:
+        mailbox_store.invalidate_account_pages(session.active_linked_account_id)
+        mailbox_store.upsert_thread_summaries(
+            session.active_linked_account_id,
+            [to_thread_summary(result.thread)],
+        )
     persist_threads(
         session,
         conversation_store,
@@ -528,6 +577,7 @@ def act_on_gmail_thread(
     session: AuthSessionRecord = Depends(get_current_auth_session),
     client: GoogleWorkspaceClient = Depends(get_google_workspace_client),
     cache: GmailMailboxCache = Depends(get_gmail_mailbox_cache),
+    mailbox_store: GmailMailboxStore = Depends(get_gmail_mailbox_store),
     conversation_store: ConversationStore = Depends(get_conversation_store),
 ) -> ThreadActionResponse:
     account_email, access_token = require_active_google_account(session)
@@ -543,10 +593,23 @@ def act_on_gmail_thread(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     cache.invalidate_account_pages(account_email)
+    if session.active_linked_account_id:
+        mailbox_store.invalidate_account_pages(session.active_linked_account_id)
+
     if result.thread is None:
         cache.delete_thread_detail(account_email, thread_id)
+        if session.active_linked_account_id:
+            mailbox_store.delete_thread_summaries(
+                session.active_linked_account_id,
+                [thread_id],
+            )
     else:
         cache.upsert_thread_detail(account_email, result.thread)
+        if session.active_linked_account_id:
+            mailbox_store.upsert_thread_summaries(
+                session.active_linked_account_id,
+                [to_thread_summary(result.thread)],
+            )
         persist_threads(
             session,
             conversation_store,
@@ -560,3 +623,49 @@ def act_on_gmail_thread(
         thread=result.thread,
         deleted=result.deleted,
     )
+
+
+@router.post("/internal/watch")
+async def gmail_watch_notification(
+    request: Request,
+    service: GmailMailboxService = Depends(get_gmail_mailbox_service),
+) -> dict[str, bool]:
+    expected_token = (get_settings().gmail_watch_pubsub_token or "").strip()
+    if not expected_token:
+        raise HTTPException(
+            status_code=503,
+            detail="Gmail watch token is not configured.",
+        )
+    auth_header = request.headers.get("authorization", "")
+    bearer = auth_header.removeprefix("Bearer ").strip() if auth_header else ""
+    if not hmac.compare_digest(bearer, expected_token):
+        raise HTTPException(status_code=401, detail="Invalid Gmail watch token.")
+
+    payload = await request.json()
+    message = payload.get("message", {}) if isinstance(payload, dict) else {}
+    encoded = str(message.get("data") or "").strip()
+    if not encoded:
+        return {"accepted": True}
+
+    padded = encoded + "=" * (-len(encoded) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8")
+        notification = json.loads(decoded)
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid Gmail watch payload.",
+        ) from exc
+
+    account_email = str(notification.get("emailAddress") or "").strip().lower()
+    history_id = str(notification.get("historyId") or "").strip() or None
+    if account_email:
+        try:
+            service.handle_watch_notification(account_email, history_id)
+        except GoogleAPIError as exc:
+            raise HTTPException(
+                status_code=exc.app_status_code, detail=str(exc)
+            ) from exc
+        except RuntimeError as exc:
+            raise runtime_error_to_http_exception(exc) from exc
+    return {"accepted": True}

@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -21,7 +22,7 @@ class ThreadMessage(BaseModel):
     inline_assets: list[ThreadInlineAsset] = Field(default_factory=list)
 
 
-class ThreadSummary(BaseModel):
+class ThreadSummaryFields(BaseModel):
     id: str
     subject: str
     snippet: str
@@ -30,11 +31,28 @@ class ThreadSummary(BaseModel):
     action_states: list[ActionState]
 
 
+class ThreadSummary(ThreadSummaryFields):
+    state: Literal["ready"] = "ready"
+
+
+class ThreadPlaceholder(BaseModel):
+    state: Literal["placeholder"] = "placeholder"
+    id: str
+
+
+ThreadListItem = Annotated[
+    ThreadPlaceholder | ThreadSummary, Field(discriminator="state")
+]
+
+
 class ThreadSummaryPage(BaseModel):
-    threads: list[ThreadSummary] = Field(default_factory=list)
+    threads: list[ThreadListItem] = Field(default_factory=list)
     next_page_token: str | None = None
     has_more: bool = False
     total_count: int | None = None
+    hydrated_count: int = 0
+    source: str = "live"
+    synced_at: datetime | None = None
 
 
 class MailboxCountsResponse(BaseModel):
@@ -63,9 +81,32 @@ class ThreadAnalysis(BaseModel):
     analyzed_at: datetime
 
 
-class ThreadDetail(ThreadSummary):
+class ThreadDetail(ThreadSummaryFields):
     messages: list[ThreadMessage]
     analysis: ThreadAnalysis | None = None
+
+
+class ThreadHydrateRequest(BaseModel):
+    thread_ids: list[str] = Field(default_factory=list, max_length=50)
+
+    @field_validator("thread_ids")
+    @classmethod
+    def validate_thread_ids(cls, value: list[str]) -> list[str]:
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for thread_id in value:
+            normalized = thread_id.strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            ordered.append(normalized)
+        return ordered
+
+
+class ThreadHydrateResponse(BaseModel):
+    threads: dict[str, ThreadSummary] = Field(default_factory=dict)
+    hydrated_count: int = 0
+    synced_at: datetime | None = None
 
 
 class ReplyToThreadRequest(BaseModel):

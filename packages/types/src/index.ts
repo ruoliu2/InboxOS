@@ -10,6 +10,7 @@ export type ThreadActionName =
   | "restore";
 
 export type ThreadSummary = {
+  state: "ready";
   id: string;
   subject: string;
   snippet: string;
@@ -18,11 +19,21 @@ export type ThreadSummary = {
   action_states: ActionState[];
 };
 
+export type ThreadPlaceholder = {
+  state: "placeholder";
+  id: string;
+};
+
+export type ThreadListItem = ThreadSummary | ThreadPlaceholder;
+
 export type ThreadSummaryPage = {
-  threads: ThreadSummary[];
+  threads: ThreadListItem[];
   next_page_token: string | null;
   has_more: boolean;
   total_count: number | null;
+  hydrated_count: number;
+  source: string;
+  synced_at: string | null;
 };
 
 export type MailboxCounts = {
@@ -58,9 +69,19 @@ export type ThreadAnalysis = {
   analyzed_at: string;
 };
 
-export type ThreadDetail = ThreadSummary & {
+export type ThreadDetail = Omit<ThreadSummary, "state"> & {
   messages: ThreadMessage[];
   analysis: ThreadAnalysis | null;
+};
+
+export type ThreadHydrateRequest = {
+  thread_ids: string[];
+};
+
+export type ThreadHydrateResponse = {
+  threads: Record<string, ThreadSummary>;
+  hydrated_count: number;
+  synced_at: string | null;
 };
 
 export type ReplyToThreadResponse = {
