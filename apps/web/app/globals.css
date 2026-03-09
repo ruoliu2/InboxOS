@@ -277,6 +277,15 @@ textarea {
   padding-top: 0;
 }
 
+.folder-section-title {
+  margin: 2px 0 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .folder-row {
   height: 31px;
   border: 1px solid transparent;
@@ -596,6 +605,97 @@ textarea {
 .read-header time {
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+.analysis-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  background: #f8fafc;
+}
+
+.analysis-section {
+  display: grid;
+  gap: 6px;
+}
+
+.analysis-section h2 {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #475569;
+}
+
+.analysis-section p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #111827;
+  line-height: 1.45;
+}
+
+.analysis-task-list {
+  display: grid;
+  gap: 8px;
+}
+
+.analysis-task-card {
+  border: 1px solid #dbe3ef;
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.analysis-task-header,
+.analysis-task-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.analysis-task-header strong {
+  font-size: 0.9rem;
+}
+
+.analysis-task-category {
+  color: #475569;
+  font-size: 0.77rem;
+  text-transform: capitalize;
+}
+
+.analysis-task-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.deadline-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: #334155;
+  background: #f8fafc;
+}
+
+.deadline-badge.fallback {
+  border-color: #e5e7eb;
+  color: #4b5563;
+  background: #f3f4f6;
+}
+
+.analysis-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  color: #111827;
+  font-size: 0.88rem;
 }
 
 .read-body {

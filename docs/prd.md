@@ -75,6 +75,11 @@ For each email or thread, extract:
 - deadlines or date-based follow-up needs
 - requested information or requested documents
 - recommended next action
+- structured task candidates with due dates
+
+Deadline default:
+
+- if no explicit due date is found for an extracted task, assign a fallback due date 7 calendar days after the latest message timestamp in the thread
 
 #### 4. Task and reminder generation
 
@@ -91,6 +96,8 @@ System should:
 - keep tasks in-app for MVP
 - leave Apple Reminders integration for later
 - categorize created tasks based on email intent and deadline context
+- update existing open AI-created tasks idempotently when the same thread is re-analyzed
+- preserve completed AI-created tasks and never reopen them automatically
 
 #### 5. Action-based inbox view
 
@@ -104,6 +111,8 @@ InboxOS should maintain action views on top of the inbox:
 - FYI
 
 The same email can appear in multiple views at the same time.
+
+These action views are virtual InboxOS views backed by persisted analysis state, not Gmail labels or folders.
 
 #### 6. Reply workflow
 
@@ -146,6 +155,7 @@ System should:
 - system creates reminder and task items from relevant emails
 - system supports overlapping action states for a single email
 - user can reply directly from the mail workspace
+- system persists To Reply and To Follow Up classifications so those views remain available across refreshes
 
 ## Initial Tech Plan
 
@@ -154,6 +164,7 @@ System should:
 - shared UI: Next.js + shadcn/ui
 - backend API: Python + FastAPI
 - LLM layer: OpenAI-compatible API
+- default model provider: OpenRouter through its OpenAI-compatible endpoint
 - reminder layer: in-app task module first
 - deployment: Vercel for web, Railway for API
 

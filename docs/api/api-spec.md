@@ -103,6 +103,10 @@ Query params:
   - optional Gmail search query
   - accepted by the backend for provider-side search
   - the current web UI still filters only already-loaded summaries locally
+- `action_state`
+  - optional virtual InboxOS action view
+  - allowed values: `to_reply`, `to_follow_up`
+  - when present, the backend returns persisted thread summaries from AI analysis instead of querying Gmail for a mailbox page
 
 Response shape:
 
@@ -128,6 +132,20 @@ Behavior:
 - first page may be served from the persisted Gmail mailbox cache
 - the backend refreshes the first page cache in the background
 - summary pages contain lightweight thread metadata only
+- when `action_state` is set, the backend serves persisted InboxOS action views and returns `has_more: false`
+
+### `GET /gmail/action-counts`
+
+Returns the persisted counts for InboxOS action views.
+
+Response shape:
+
+```json
+{
+  "to_reply": 12,
+  "to_follow_up": 7
+}
+```
 
 ### `GET /gmail/threads/{thread_id}`
 
@@ -159,6 +177,8 @@ Behavior:
 
 - fetches the full Gmail thread on demand
 - stores the returned detail in the persisted mailbox cache
+- hydrates `analysis` from persisted thread insight when available
+- may run a short inline analysis refresh when the stored insight is missing or stale
 
 ### `POST /gmail/threads/{thread_id}/reply`
 
@@ -235,7 +255,10 @@ Request body:
   "title": "Send revised deck",
   "due_at": "2026-03-07T18:00:00Z",
   "thread_id": "thread_123",
-  "category": "deadline"
+  "category": "deadline",
+  "origin": "manual",
+  "origin_key": null,
+  "deadline_source": "explicit"
 }
 ```
 
@@ -257,4 +280,6 @@ Marks a task as completed.
 
 - auth sessions and OAuth state are persisted in SQLite at `SESSION_DB_PATH`
 - Gmail thread summary pages and opened thread detail are persisted in SQLite at `GMAIL_CACHE_DB_PATH`
-- task data is still stored in-memory and resets when the API process restarts
+- task data is persisted in the app database
+- AI-created task records include `origin`, `origin_key`, and `deadline_source`
+- thread insight persists summary, action states, structured deadlines, and structured extracted tasks

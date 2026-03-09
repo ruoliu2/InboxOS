@@ -11,3 +11,13 @@ class ActionState(StrEnum):
 class TaskStatus(StrEnum):
     OPEN = "open"
     COMPLETED = "completed"
+
+
+class TaskOrigin(StrEnum):
+    MANUAL = "manual"
+    AGENT = "agent"
+
+
+class DeadlineSource(StrEnum):
+    EXPLICIT = "explicit"
+    FALLBACK_7D = "fallback_7d"

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from app.schemas.common import TaskStatus
+from app.schemas.common import TaskOrigin, TaskStatus
 from app.schemas.task import CreateTaskRequest, TaskItem
 from app.services.id_factory import new_id
 from app.storage.conversation_store import (
@@ -68,6 +68,9 @@ class TaskService:
             conversation_id=conversation_id,
             thread_id=payload.thread_id,
             category=payload.category,
+            origin=payload.origin or TaskOrigin.MANUAL,
+            origin_key=payload.origin_key,
+            deadline_source=payload.deadline_source,
             created_at=datetime.now(UTC),
         )
         self.store.upsert_task(user_id, task)

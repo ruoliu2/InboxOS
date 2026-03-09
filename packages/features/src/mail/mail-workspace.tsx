@@ -22,6 +22,8 @@ import {
 import { api } from "@inboxos/lib/api";
 import { formatDate } from "@inboxos/lib/format";
 import {
+  ActionState,
+  ActionViewCounts,
   AuthSessionResponse,
   ComposeMode,
   MailboxCounts,
@@ -37,6 +39,8 @@ import { OverflowMenu } from "@inboxos/ui/overflow-menu";
 import { EmailHtmlPreview } from "./email-html-preview";
 
 type ListTab = "all" | "unread";
+type ActionFolderKey = Extract<ActionState, "to_reply" | "to_follow_up">;
+type MailViewKey = MailboxKey | ActionFolderKey;
 
 type MailWorkspaceProps = {
   initialThreadId?: string | null;
@@ -57,6 +61,10 @@ const EMPTY_MAILBOX_COUNTS: MailboxCounts = {
   trash: null,
   junk: null,
 };
+const EMPTY_ACTION_COUNTS: ActionViewCounts = {
+  to_reply: 0,
+  to_follow_up: 0,
+};
 
 const primaryFolders: Array<{
   key: MailboxKey;
@@ -68,6 +76,15 @@ const primaryFolders: Array<{
   { key: "archive", label: "Archive", icon: Archive },
   { key: "trash", label: "Trash", icon: Trash2 },
   { key: "junk", label: "Junk", icon: ArchiveX },
+];
+
+const actionFolders: Array<{
+  key: ActionFolderKey;
+  label: string;
+  icon: typeof Reply;
+}> = [
+  { key: "to_reply", label: "To Reply", icon: Reply },
+  { key: "to_follow_up", label: "To Follow Up", icon: Clock },
 ];
 
 function isUnread(thread: ThreadSummary): boolean {
@@ -144,15 +161,30 @@ function relativeTime(value: string): string {
 }
 
 function labelsFromThread(thread: ThreadSummary): string[] {
-  if (thread.action_states.includes("to_reply")) {
-    return ["unread"];
-  }
-  return ["gmail"];
+  const labels = thread.action_states
+    .filter((state) => state !== "fyi")
+    .map(
+      (state) =>
+        ({
+          to_reply: "to reply",
+          to_follow_up: "follow up",
+          task: "task",
+        })[state],
+    )
+    .filter(Boolean);
+
+  return labels.length > 0 ? labels : ["gmail"];
 }
 
-function mailboxHeading(value: MailboxKey): string {
+function isActionFolder(value: MailViewKey): value is ActionFolderKey {
+  return value === "to_reply" || value === "to_follow_up";
+}
+
+function mailboxHeading(value: MailViewKey): string {
   return (
-    primaryFolders.find((folder) => folder.key === value)?.label ?? "Inbox"
+    primaryFolders.find((folder) => folder.key === value)?.label ??
+    actionFolders.find((folder) => folder.key === value)?.label ??
+    "Inbox"
   );
 }
 
@@ -202,11 +234,20 @@ function hasHtmlPreview(message: ThreadMessage): boolean {
   return Boolean(message.body_html?.trim());
 }
 
+function taskCategoryLabel(value: string | null | undefined): string {
+  if (!value) {
+    return "task";
+  }
+  return value.replace(/_/g, " ");
+}
+
 export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   const [session, setSession] = useState<AuthSessionResponse | null>(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [mailboxCounts, setMailboxCounts] =
     useState<MailboxCounts>(EMPTY_MAILBOX_COUNTS);
+  const [actionCounts, setActionCounts] =
+    useState<ActionViewCounts>(EMPTY_ACTION_COUNTS);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(
     initialThreadId ?? null,
@@ -214,7 +255,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   const [selectedThread, setSelectedThread] = useState<ThreadDetail | null>(
     null,
   );
-  const [mailbox, setMailbox] = useState<MailboxKey>("inbox");
+  const [mailView, setMailView] = useState<MailViewKey>("inbox");
   const [listTab, setListTab] = useState<ListTab>("all");
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -241,8 +282,8 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const unreadOnly = listTab === "unread";
-  const activeHeading = mailboxHeading(mailbox);
+  const unreadOnly = listTab === "unread" && !isActionFolder(mailView);
+  const activeHeading = mailboxHeading(mailView);
 
   const loadMailboxCounts = useCallback(async () => {
     if (!session?.authenticated) {
@@ -254,6 +295,19 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
       setMailboxCounts(counts);
     } catch {
       setMailboxCounts(EMPTY_MAILBOX_COUNTS);
+    }
+  }, [session?.authenticated]);
+
+  const loadActionCounts = useCallback(async () => {
+    if (!session?.authenticated) {
+      return;
+    }
+
+    try {
+      const counts = await api.getGmailActionCounts();
+      setActionCounts(counts);
+    } catch {
+      setActionCounts(EMPTY_ACTION_COUNTS);
     }
   }, [session?.authenticated]);
 
@@ -270,8 +324,9 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
       const page = await api.getGmailThreads({
         page_size: PAGE_SIZE,
         q: searchQuery || undefined,
-        mailbox,
+        mailbox: isActionFolder(mailView) ? undefined : mailView,
         unread_only: unreadOnly,
+        action_state: isActionFolder(mailView) ? mailView : undefined,
       });
       setThreads(page.threads);
       setNextPageToken(page.next_page_token);
@@ -287,11 +342,18 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
     } finally {
       setLoadingList(false);
     }
-  }, [activeHeading, mailbox, searchQuery, session?.authenticated, unreadOnly]);
+  }, [
+    activeHeading,
+    mailView,
+    searchQuery,
+    session?.authenticated,
+    unreadOnly,
+  ]);
 
   const loadMoreThreads = useCallback(async () => {
     if (
       !session?.authenticated ||
+      isActionFolder(mailView) ||
       !nextPageToken ||
       loadingList ||
       loadingMore
@@ -308,7 +370,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
         page_token: nextPageToken,
         page_size: PAGE_SIZE,
         q: searchQuery || undefined,
-        mailbox,
+        mailbox: isActionFolder(mailView) ? undefined : mailView,
         unread_only: unreadOnly,
       });
       setThreads((current) => mergeThreadSummaries(current, page.threads));
@@ -322,7 +384,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
   }, [
     loadingList,
     loadingMore,
-    mailbox,
+    mailView,
     nextPageToken,
     searchQuery,
     session?.authenticated,
@@ -374,7 +436,19 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
       return;
     }
     void loadMailboxCounts();
-  }, [loadMailboxCounts, session?.authenticated, sessionChecked]);
+    void loadActionCounts();
+  }, [
+    loadActionCounts,
+    loadMailboxCounts,
+    session?.authenticated,
+    sessionChecked,
+  ]);
+
+  useEffect(() => {
+    if (isActionFolder(mailView)) {
+      setListTab("all");
+    }
+  }, [mailView]);
 
   useEffect(() => {
     if (!sessionChecked || !session?.authenticated) {
@@ -499,8 +573,8 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
           action === "delete" ||
           action === "restore" ||
           action === "trash" ||
-          (action === "archive" && mailbox === "inbox") ||
-          (action === "junk" && mailbox !== "junk");
+          (action === "archive" && mailView === "inbox") ||
+          (action === "junk" && mailView !== "junk");
 
         const updatedThread = result.thread;
         if (updatedThread) {
@@ -519,7 +593,11 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
           setSelectedThread(null);
         }
 
-        await Promise.all([loadInitialThreads(), loadMailboxCounts()]);
+        await Promise.all([
+          loadInitialThreads(),
+          loadMailboxCounts(),
+          loadActionCounts(),
+        ]);
         setNotice(
           {
             archive: "Thread archived.",
@@ -536,7 +614,13 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
         setConfirmState(null);
       }
     },
-    [loadInitialThreads, loadMailboxCounts, mailbox, selectedThreadId],
+    [
+      loadActionCounts,
+      loadInitialThreads,
+      loadMailboxCounts,
+      mailView,
+      selectedThreadId,
+    ],
   );
 
   const moreMenuItems = useMemo(() => {
@@ -547,7 +631,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
       disabled?: boolean;
     }> = [];
 
-    if (mailbox === "trash" || mailbox === "junk") {
+    if (mailView === "trash" || mailView === "junk") {
       items.push({
         label: "Restore to inbox",
         onSelect: () => {
@@ -555,7 +639,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
         },
       });
     }
-    if (mailbox === "trash") {
+    if (mailView === "trash") {
       items.push({
         label: "Delete permanently",
         onSelect: () =>
@@ -569,7 +653,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
       });
     }
     return items;
-  }, [mailbox, runThreadAction]);
+  }, [mailView, runThreadAction]);
 
   async function sendCompose() {
     if (!selectedThreadId || !activeThread) {
@@ -596,7 +680,11 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
           "prepend",
         ),
       );
-      await loadMailboxCounts();
+      await Promise.all([
+        loadInitialThreads(),
+        loadMailboxCounts(),
+        loadActionCounts(),
+      ]);
       setComposeBody("");
       setForwardTo("");
       setForwardCc("");
@@ -621,6 +709,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
       await api.logout();
     } finally {
       setMailboxCounts(EMPTY_MAILBOX_COUNTS);
+      setActionCounts(EMPTY_ACTION_COUNTS);
       window.location.href = "/auth";
     }
   }
@@ -645,8 +734,8 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
               return (
                 <button
                   key={folder.key}
-                  className={`folder-row ${folder.key === mailbox ? "active" : ""}`.trim()}
-                  onClick={() => setMailbox(folder.key)}
+                  className={`folder-row ${folder.key === mailView ? "active" : ""}`.trim()}
+                  onClick={() => setMailView(folder.key)}
                   type="button"
                 >
                   <span className="folder-label">
@@ -662,8 +751,27 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
           </div>
 
           <div className="mail-folder-group">
+            <p className="folder-section-title">InboxOS views</p>
+            {actionFolders.map((folder) => (
+              <button
+                key={folder.key}
+                className={`folder-row ${folder.key === mailView ? "active" : ""}`.trim()}
+                onClick={() => setMailView(folder.key)}
+                type="button"
+              >
+                <span className="folder-label">
+                  <folder.icon size={15} />
+                  {folder.label}
+                </span>
+                <span className="folder-count">{actionCounts[folder.key]}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="mail-folder-group">
             <p className="folder-note">
-              Gmail folders and search now reflect live mailbox state.
+              Gmail folders stay provider-backed. InboxOS views come from saved
+              action state.
             </p>
             <button
               className="folder-row signout-row"
@@ -681,22 +789,24 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
         <section className="mail-center-list">
           <div className="list-topbar">
             <h1>{activeHeading}</h1>
-            <div className="list-tabs">
-              <button
-                className={listTab === "all" ? "active" : ""}
-                onClick={() => setListTab("all")}
-                type="button"
-              >
-                All mail
-              </button>
-              <button
-                className={listTab === "unread" ? "active" : ""}
-                onClick={() => setListTab("unread")}
-                type="button"
-              >
-                Unread
-              </button>
-            </div>
+            {!isActionFolder(mailView) ? (
+              <div className="list-tabs">
+                <button
+                  className={listTab === "all" ? "active" : ""}
+                  onClick={() => setListTab("all")}
+                  type="button"
+                >
+                  All mail
+                </button>
+                <button
+                  className={listTab === "unread" ? "active" : ""}
+                  onClick={() => setListTab("unread")}
+                  type="button"
+                >
+                  Unread
+                </button>
+              </div>
+            ) : null}
           </div>
 
           <div className="mail-search-wrap">
@@ -785,7 +895,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
               onClick={() => void runThreadAction("archive")}
               disabled={
                 !activeThread ||
-                mailbox === "archive" ||
+                mailView === "archive" ||
                 actionInFlight !== null
               }
             >
@@ -796,7 +906,7 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
               aria-label="Move to junk"
               onClick={() => void runThreadAction("junk")}
               disabled={
-                !activeThread || mailbox === "junk" || actionInFlight !== null
+                !activeThread || mailView === "junk" || actionInFlight !== null
               }
             >
               <ArchiveX size={15} />
@@ -908,6 +1018,67 @@ export function MailWorkspace({ initialThreadId }: MailWorkspaceProps) {
                   </p>
                 </div>
                 <time>{formatDate(activeThread.last_message_at)}</time>
+              </div>
+
+              <div className="analysis-panel">
+                <div className="analysis-section">
+                  <h2>AI Summary</h2>
+                  <p>
+                    {activeThread.analysis?.summary ??
+                      "Analysis is still processing for this thread."}
+                  </p>
+                </div>
+
+                {activeThread.analysis?.extracted_tasks?.length ? (
+                  <div className="analysis-section">
+                    <h2>Extracted Tasks</h2>
+                    <div className="analysis-task-list">
+                      {activeThread.analysis.extracted_tasks.map(
+                        (task, index) => (
+                          <article
+                            key={`${task.title}-${task.due_at}-${index}`}
+                            className="analysis-task-card"
+                          >
+                            <div className="analysis-task-header">
+                              <strong>{task.title}</strong>
+                              <span className="analysis-task-category">
+                                {taskCategoryLabel(task.category)}
+                              </span>
+                            </div>
+                            <div className="analysis-task-meta">
+                              <span>{formatDate(task.due_at)}</span>
+                              <span
+                                className={`deadline-badge ${task.deadline_source === "fallback_7d" ? "fallback" : ""}`.trim()}
+                              >
+                                {task.deadline_source === "fallback_7d"
+                                  ? "Fallback 7 days"
+                                  : "Explicit deadline"}
+                              </span>
+                            </div>
+                          </article>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+
+                {activeThread.analysis?.requested_items?.length ? (
+                  <div className="analysis-section">
+                    <h2>Requested Items</h2>
+                    <ul className="analysis-list">
+                      {activeThread.analysis.requested_items.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {activeThread.analysis?.recommended_next_action ? (
+                  <div className="analysis-section">
+                    <h2>Recommended Next Action</h2>
+                    <p>{activeThread.analysis.recommended_next_action}</p>
+                  </div>
+                ) : null}
               </div>
 
               <div className="read-body message-stack">

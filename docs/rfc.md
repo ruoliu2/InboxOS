@@ -14,6 +14,7 @@ web and future macOS packaging.
 - load inbox summaries quickly and fetch full thread detail on demand
 - support direct reply from the mail workspace
 - show calendar context and tasks in the same product surface
+- persist AI-derived action views and task generation per thread
 
 ## 3. Non Goals
 
@@ -96,6 +97,7 @@ Reason:
 - on-demand thread detail fetch
 - local search over already-loaded summaries
 - direct reply from the reading pane
+- background AI analysis after sync and refresh on thread open when insights are stale
 
 ### 7.4 Reply flow
 
@@ -103,6 +105,16 @@ Reason:
 2. User sends a reply from the compose area
 3. Backend updates thread state and returns the updated thread
 4. UI refreshes the reading pane and summary list
+5. Background analysis refresh may update To Reply and To Follow Up views after the reply
+
+### 7.5 Thread analysis and task derivation
+
+1. Backend fetches the Gmail thread detail
+2. `ThreadAnalysisService` sends the thread to an OpenAI-compatible chat endpoint
+3. The service validates structured JSON output for summary, action states, deadlines, and extracted tasks
+4. Explicit deadlines are preserved; missing task deadlines default to 7 calendar days after `last_message_at`
+5. Persisted conversation insight becomes the source of truth for action views
+6. AI-created tasks are upserted by stable origin key so re-analysis updates open tasks without creating duplicates
 
 ## 8. UI Contract
 
@@ -135,6 +147,7 @@ Mail-inspired three-pane layout:
 - `GET /auth/session`
 - `POST /auth/logout`
 - `GET /gmail/threads`
+- `GET /gmail/action-counts`
 - `GET /gmail/threads/{id}`
 - `POST /gmail/threads/{id}/reply`
 - `GET /calendar/events`
@@ -175,3 +188,7 @@ Keep action lifecycle inside the product first. External reminder integrations c
 ### Mail-first surface instead of dashboard-first surface
 
 This keeps the product aligned to the core user workflow.
+
+### Persisted action views instead of Gmail relabeling
+
+This keeps the Gmail mailbox intact while letting InboxOS show AI-derived `To Reply` and `To Follow Up` views from database state.
