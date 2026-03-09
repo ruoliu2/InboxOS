@@ -47,6 +47,12 @@ function escapeHtmlAttribute(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
 
+function hasExplicitFontStyling(document: Document): boolean {
+  return Boolean(
+    document.querySelector('[face], [style*="font-family"], [style*="font:"]'),
+  );
+}
+
 function sanitizeHtmlDocument(resolvedHtml: string): string {
   const parser = new DOMParser();
   const document = parser.parseFromString(resolvedHtml, "text/html");
@@ -87,9 +93,12 @@ function sanitizeHtmlDocument(resolvedHtml: string): string {
     }
   });
 
+  const defaultBodyFont = hasExplicitFontStyling(document)
+    ? ""
+    : " font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;";
   const previewStyles = [
     "html, body { margin: 0; padding: 0; background: transparent; }",
-    "body { color: #111827; overflow-wrap: anywhere; }",
+    `body { color: #111827; overflow-wrap: anywhere;${defaultBodyFont} }`,
     "img, video { max-width: 100%; height: auto; }",
     "table { max-width: 100%; }",
     "pre { white-space: pre-wrap; }",

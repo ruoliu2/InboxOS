@@ -676,6 +676,7 @@ body.mail-resizing {
 .message-plain-body {
   margin: 0;
   white-space: pre-wrap;
+  font-family: var(--font-sans);
 }
 
 .message-html-preview {
