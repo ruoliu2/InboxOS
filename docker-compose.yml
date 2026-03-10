@@ -43,7 +43,7 @@ services:
       DATABASE_URL: ${COMPOSE_DATABASE_URL:-postgresql://postgres@db:5432/postgres}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:8000/auth/google/callback}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:3000/api/gateway/auth/google/callback}
       CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-local-dev-only-change-me}
     healthcheck:
       test:
@@ -64,8 +64,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
-      INTERNAL_API_BASE_URL: http://api:8000
+      API_GATEWAY_ORIGIN: http://api:8000
       NEXT_PUBLIC_SESSION_COOKIE_NAME: inboxos_session
     depends_on:
       api:

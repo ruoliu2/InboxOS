@@ -14,8 +14,9 @@ Required Google settings:
 Optional callback setting:
 
 - `GOOGLE_REDIRECT_URI`
-  - defaults to `http://localhost:8000/auth/google/callback` locally
-  - on Railway, falls back to `RAILWAY_PUBLIC_DOMAIN` when available
+  - defaults to `http://localhost:3000/api/gateway/auth/google/callback` locally
+  - otherwise falls back to `WEB_BASE_URL + /api/gateway/auth/google/callback`
+  - if `WEB_BASE_URL` is blank, Railway can still fall back to `RAILWAY_PUBLIC_DOMAIN`
 
 Optional persisted state settings:
 
@@ -50,7 +51,7 @@ Before calling the Gmail or Calendar routes, enable both the Gmail API and Googl
 For local Google OAuth, use:
 
 - `WEB_BASE_URL=http://localhost:3000`
-- `GOOGLE_REDIRECT_URI=http://localhost:8000/auth/google/callback`
+- `GOOGLE_REDIRECT_URI=http://localhost:3000/api/gateway/auth/google/callback`
 
 Run local checks from this directory with:
 

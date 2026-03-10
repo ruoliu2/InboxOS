@@ -33,8 +33,9 @@ Expected settings:
 - build command: `bun run build`
 - start command: `bun run start`
 - enable source files outside the root directory because the app imports from `packages/*`
-- env per environment: `NEXT_PUBLIC_API_BASE_URL`
+- env per environment: `API_GATEWAY_ORIGIN`
 - env per environment: `NEXT_PUBLIC_SESSION_COOKIE_NAME`
+- browser requests should stay same-origin on `/api/gateway`
 
 ### API
 
@@ -51,6 +52,7 @@ Expected settings:
 - set `CREDENTIAL_ENCRYPTION_KEY` for provider token encryption in each environment
 - attach a persistent volume at `/data` only if Gmail cache should survive restarts
 - env vars from `.env.example` plus environment-specific overrides for `APP_ENV`, cookie security, allowed origins, and OAuth callback URLs
+- Google OAuth should redirect to `https://<web-domain>/api/gateway/auth/google/callback`
 - public networking enabled with a distinct Railway-provided domain per environment
 
 ### Database
@@ -96,7 +98,7 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```bash
 bun install
 cd apps/web
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 bun run dev
+API_GATEWAY_ORIGIN=http://localhost:8000 bun run dev
 ```
 
 Run `bun install` from the repo root so local development matches the Docker workspace install.

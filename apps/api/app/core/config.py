@@ -72,6 +72,13 @@ class Settings(BaseSettings):
         if explicit_redirect is not None:
             return explicit_redirect
 
+        web_base = normalize_public_url(
+            self.web_base_url,
+            default_scheme="https",
+        )
+        if web_base is not None:
+            return f"{web_base}/api/gateway/auth/google/callback"
+
         railway_domain = normalize_public_url(
             self.railway_public_domain,
             default_scheme="https",
@@ -79,7 +86,7 @@ class Settings(BaseSettings):
         if railway_domain is not None:
             return f"{railway_domain}/auth/google/callback"
 
-        return "http://localhost:8000/auth/google/callback"
+        return "http://localhost:3000/api/gateway/auth/google/callback"
 
 
 @lru_cache

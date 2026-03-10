@@ -62,7 +62,7 @@ Then open the gamma Vercel URL and confirm:
 
 - the web app loads without build or runtime errors
 - sign-in redirects back to the gamma web domain
-- the gamma web app reaches the gamma Railway API without CORS issues
+- the gamma web app reaches the gamma Railway API through `/api/gateway`
 - mailbox actions and new mail send successfully against gamma
 
 ## Exact Production Promotion Workflow
@@ -90,7 +90,7 @@ make deploy-main
 
 Set these environment variables in both projects:
 
-- `NEXT_PUBLIC_API_BASE_URL=https://<railway-domain-for-that-environment>`
+- `API_GATEWAY_ORIGIN=https://<railway-domain-for-that-environment>`
 - `NEXT_PUBLIC_SESSION_COOKIE_NAME=inboxos_session`
 
 Do not set Supabase database credentials or service keys in Vercel for the current architecture.
@@ -101,7 +101,7 @@ After a `gamma` branch push:
 
 1. Open the gamma Vercel deployment for the pushed commit.
 2. Confirm the deployment used `apps/web` as the root directory.
-3. Confirm `NEXT_PUBLIC_API_BASE_URL` points at the gamma Railway domain.
+3. Confirm `API_GATEWAY_ORIGIN` points at the gamma Railway domain.
 4. Open the deployed site and validate the critical flows for that release.
 
 ## Railway
@@ -127,7 +127,7 @@ Set these environment variables for production:
 - `SESSION_COOKIE_SECURE=true`
 - `CORS_ORIGINS=https://<vercel-domain>`
 - `WEB_BASE_URL=https://<vercel-domain>`
-- `GOOGLE_REDIRECT_URI=<optional explicit override>`
+- `GOOGLE_REDIRECT_URI=https://<vercel-domain>/api/gateway/auth/google/callback`
 - `GOOGLE_CLIENT_ID=<secret>`
 - `GOOGLE_CLIENT_SECRET=<secret>`
 - `GMAIL_CACHE_DB_PATH=/data/gmail_mailbox_cache.sqlite3` if you keep the volume for cache persistence
@@ -143,23 +143,23 @@ Set these environment variables for gamma:
 - `SESSION_COOKIE_SECURE=true`
 - `CORS_ORIGINS=https://<gamma-vercel-domain>`
 - `WEB_BASE_URL=https://<gamma-vercel-domain>`
-- `GOOGLE_REDIRECT_URI=<optional explicit override>`
+- `GOOGLE_REDIRECT_URI=https://<gamma-vercel-domain>/api/gateway/auth/google/callback`
 - `GOOGLE_CLIENT_ID=<secret>`
 - `GOOGLE_CLIENT_SECRET=<secret>`
 - `GMAIL_CACHE_DB_PATH=/data/gmail_mailbox_cache.sqlite3` if you keep the volume for cache persistence
 
-If `GOOGLE_REDIRECT_URI` is unset, Railway deployments fall back to `RAILWAY_PUBLIC_DOMAIN` for the callback URL.
+If `GOOGLE_REDIRECT_URI` is unset, the API falls back to `WEB_BASE_URL + /api/gateway/auth/google/callback`, then to `RAILWAY_PUBLIC_DOMAIN` only if `WEB_BASE_URL` is blank.
 
-### Cross-Origin Session Safety
+### Gateway Session Safety
 
-The current API authenticates browser requests with an HTTP-only session cookie. If you deploy the web app and API on different origins and keep `SESSION_COOKIE_SECURE=true` with cross-origin cookies enabled, you must pair that setup with a CSRF defense before treating it as production-ready for state-changing routes.
+The current API authenticates browser requests with an HTTP-only session cookie. The intended production path is now browser -> Vercel `/api/gateway` -> Railway, so the browser keeps a same-origin cookie on the web domain and Vercel relays that cookie upstream.
 
 For this repo today:
 
-- prefer same-origin deployment for the web app and API when possible
-- otherwise require an origin-bound CSRF token or a custom header validated server-side before enabling cross-origin authenticated writes
-- do not assume CORS alone protects `POST` form submissions from third-party sites
-- when Vercel serves the web app and Railway serves the API on a different origin, the Next server on Vercel does not receive the Railway session cookie; keep auth enforcement and bootstrap on the browser-to-API path rather than Vercel route guards or server prefetch
+- prefer the same-origin gateway path for all browser auth and product API requests
+- keep `API_GATEWAY_ORIGIN` server-only in Vercel so the browser does not talk to Railway directly
+- keep `WEB_BASE_URL` aligned with the Vercel domain so Google OAuth lands on `/api/gateway/auth/google/callback`
+- do not reintroduce direct cross-origin browser writes without an origin-bound CSRF defense
 
 ### Gamma Railway Verification
 
@@ -176,7 +176,7 @@ curl -fsS https://<gamma-railway-domain>/health
 
 5. If the deployment boots but the web app fails, double-check:
 
-- `CORS_ORIGINS`
+- `API_GATEWAY_ORIGIN`
 - `WEB_BASE_URL`
 - `SESSION_COOKIE_SECURE`
 - `GOOGLE_CLIENT_ID`
@@ -210,10 +210,10 @@ On each push to `main` or `gamma`, the workflow:
 1. Push the new `gamma` branch so all providers can bind their gamma environment to a stable branch.
 2. Create the Supabase gamma project and add its secrets to the GitHub `gamma` environment.
 3. Create the Railway gamma environment or service, enable public networking, optionally add the `/data` volume for Gmail cache, and set its gamma API variables except the final gamma Vercel URL values.
-4. Create the Vercel gamma project, set its Production Branch to `gamma`, and point `NEXT_PUBLIC_API_BASE_URL` at the gamma Railway domain.
+4. Create the Vercel gamma project, set its Production Branch to `gamma`, and point `API_GATEWAY_ORIGIN` at the gamma Railway domain.
 5. After gamma is healthy, create the production Supabase project, production Railway environment or service on `main`, and the production Vercel project.
 6. Update Railway `CORS_ORIGINS` and `WEB_BASE_URL` in each environment to the matching Vercel domain.
-7. Update the Google OAuth client with both Vercel origins and both Railway callback URLs if the same OAuth app is shared across gamma and production.
+7. Update the Google OAuth client with both Vercel origins and both Vercel gateway callback URLs if the same OAuth app is shared across gamma and production.
 8. Verify gamma from `gamma`, then promote the same commit to `main`.
 
 ## Acceptance Checks
@@ -221,7 +221,7 @@ On each push to `main` or `gamma`, the workflow:
 - `cd apps/web && bun run build`
 - `cd apps/api && uv run --group dev python -m pytest`
 - `https://<gamma-railway-domain>/health` and `https://<production-railway-domain>/health` both return `{"ok": true}`
-- both deployed web apps reach their matching Railway API without CORS failures
+- both deployed web apps reach their matching Railway API through `/api/gateway`
 - Google sign-in completes and redirects back to the matching Vercel web URL in each environment
 - the session cookie is secure and HTTP-only
 - the session survives a Railway redeploy because auth state lives in Supabase

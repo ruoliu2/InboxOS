@@ -83,7 +83,7 @@ Local app state now defaults to Supabase Postgres at `127.0.0.1:54322`. Reset th
 ```bash
 bun install
 cd apps/web
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 bun run dev
+API_GATEWAY_ORIGIN=http://localhost:8000 bun run dev
 ```
 
 Run `bun install` from the repo root. The web app and Docker image both use the root Bun workspace lockfile.
@@ -174,7 +174,8 @@ Each target pushes the current clean, fast-forwardable commit to the matching re
 - build command: `bun run build`
 - start command: `bun run start`
 - enable source files outside the root directory because `apps/web` imports from `packages/*`
-- env per environment: `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_SESSION_COOKIE_NAME`
+- env per environment: `API_GATEWAY_ORIGIN`, `NEXT_PUBLIC_SESSION_COOKIE_NAME`
+- browser traffic should stay on the same-origin gateway at `/api/gateway`; do not point the deployed browser client directly at Railway
 
 ### API on Railway
 
@@ -186,10 +187,11 @@ Each target pushes the current clean, fast-forwardable commit to the matching re
 - set `DATABASE_URL` to the matching Supabase Postgres connection string for each environment
 - set `CREDENTIAL_ENCRYPTION_KEY` in Railway for each environment
 - set env vars from `.env.example` plus environment-specific overrides for `APP_ENV`, `SESSION_COOKIE_SECURE`, `CORS_ORIGINS`, and `WEB_BASE_URL`
-- if the web app stays on Vercel and the API stays on Railway, treat the session cookie as API-origin state; do not build Next server redirects or server prefetch around Vercel-side cookie reads
+- keep Google OAuth terminating on the web origin with `GOOGLE_REDIRECT_URI=https://<vercel-domain>/api/gateway/auth/google/callback`
+- when the web app stays on Vercel and the API stays on Railway, treat `/api/gateway` as the browser-facing entrypoint and let Vercel relay the session cookie to Railway
 - keep the `/data` volume only if `GMAIL_CACHE_DB_PATH` should survive container replacement
 - optionally put `GMAIL_CACHE_DB_PATH` on persistent storage if mailbox cache should survive container replacement
-- `GOOGLE_REDIRECT_URI` is optional on Railway when `RAILWAY_PUBLIC_DOMAIN` is available, but can still be set explicitly
+- `GOOGLE_REDIRECT_URI` can still be set explicitly, but the default fallback now resolves from `WEB_BASE_URL` to `/api/gateway/auth/google/callback`
 
 ### Supabase
 

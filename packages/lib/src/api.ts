@@ -1,4 +1,4 @@
-import { API_BASE } from "@inboxos/config/web";
+import { GATEWAY_BASE } from "@inboxos/config/web";
 import {
   LinkedAccount,
   AuthSessionResponse,
@@ -56,7 +56,7 @@ async function readErrorMessage(response: Response): Promise<string> {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const isFormData =
     typeof FormData !== "undefined" && init?.body instanceof FormData;
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${GATEWAY_BASE}${path}`, {
     ...init,
     credentials: "include",
     headers: {
