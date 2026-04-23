@@ -98,6 +98,7 @@ export function TasksView() {
     }
     return ["all", ...Array.from(values).sort((a, b) => a.localeCompare(b))];
   }, [tasks]);
+  const categoryCount = Math.max(0, categories.length - 1);
 
   const filteredTasks = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -156,18 +157,21 @@ export function TasksView() {
   }, [pageIndex, totalPages]);
 
   const summary = useMemo(() => {
-    const openTasks = tasks.filter((task) => task.status === "open");
-    const completedTasks = tasks.length - openTasks.length;
-    const urgentTasks = openTasks.filter(
-      (task) => derivePriority(task) === "high",
-    ).length;
-
-    return {
-      total: tasks.length,
-      open: openTasks.length,
-      completed: completedTasks,
-      urgent: urgentTasks,
-    };
+    return tasks.reduce(
+      (acc, task) => {
+        acc.total += 1;
+        if (task.status === "open") {
+          acc.open += 1;
+          if (derivePriority(task) === "high") {
+            acc.urgent += 1;
+          }
+        } else if (task.status === "completed") {
+          acc.completed += 1;
+        }
+        return acc;
+      },
+      { total: 0, open: 0, completed: 0, urgent: 0 },
+    );
   }, [tasks]);
 
   async function createTask(event: FormEvent<HTMLFormElement>) {
@@ -240,7 +244,8 @@ export function TasksView() {
               </div>
               <div className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/75 px-4 py-2 text-[0.82rem] font-medium text-[color:var(--text-muted)] shadow-[0_12px_24px_rgba(15,23,42,0.06)]">
                 <Sparkles size={15} className="text-[color:var(--accent)]" />
-                {summary.open} open across {categories.length - 1} categories
+                {summary.open} open across {categoryCount}{" "}
+                {categoryCount === 1 ? "category" : "categories"}
               </div>
             </div>
             <div className="grid gap-3 md:grid-cols-3">
@@ -308,7 +313,7 @@ export function TasksView() {
           </label>
 
           <select
-            className="h-11 rounded-[14px] border border-[color:var(--line)] bg-[color:var(--surface-1)] px-4 text-[0.9rem] text-[color:var(--text)] outline-none transition-[border-color,box-shadow,background-color] duration-150 ease-[var(--ease-out)] focus:border-[color:var(--line-emphasis)] focus:bg-white focus:shadow-[0_0_0_4px_rgba(37,99,235,0.12)]"
+            className="h-11 rounded-[14px] border border-[color:var(--line)] bg-[color:var(--surface-1)] px-4 text-[0.9rem] text-[color:var(--text)] outline-none transition-[border-color,box-shadow,background-color] duration-150 ease-[var(--ease-out)] focus:border-[color:var(--line-emphasis)] focus:bg-white focus:shadow-[0_0_0_4px_var(--ring)]"
             value={statusFilter}
             onChange={(event) =>
               setStatusFilter(event.target.value as StatusFilter)
@@ -321,7 +326,7 @@ export function TasksView() {
           </select>
 
           <select
-            className="h-11 rounded-[14px] border border-[color:var(--line)] bg-[color:var(--surface-1)] px-4 text-[0.9rem] text-[color:var(--text)] outline-none transition-[border-color,box-shadow,background-color] duration-150 ease-[var(--ease-out)] focus:border-[color:var(--line-emphasis)] focus:bg-white focus:shadow-[0_0_0_4px_rgba(37,99,235,0.12)]"
+            className="h-11 rounded-[14px] border border-[color:var(--line)] bg-[color:var(--surface-1)] px-4 text-[0.9rem] text-[color:var(--text)] outline-none transition-[border-color,box-shadow,background-color] duration-150 ease-[var(--ease-out)] focus:border-[color:var(--line-emphasis)] focus:bg-white focus:shadow-[0_0_0_4px_var(--ring)]"
             value={categoryFilter}
             onChange={(event) => setCategoryFilter(event.target.value)}
             aria-label="Filter by category"

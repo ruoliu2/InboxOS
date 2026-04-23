@@ -112,6 +112,7 @@ a {
   border-radius: 24px;
   background: var(--panel);
   box-shadow: var(--shadow);
+  -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
 }
 
@@ -218,7 +219,8 @@ textarea {
   border-radius: 28px;
   background: rgba(255, 255, 255, 0.78);
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
 }
 
 .mail-left-nav,
@@ -861,7 +863,68 @@ body.mail-resizing {
   display: grid;
   gap: 2px;
   z-index: 10;
+  -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
+}
+
+.dialog-overlay {
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.dialog-overlay[data-state="open"] {
+  animation: dialog-overlay-in 200ms var(--ease-out);
+}
+
+.dialog-overlay[data-state="closed"] {
+  animation: dialog-overlay-out 160ms var(--ease-out);
+}
+
+.dialog-content[data-state="open"] {
+  animation: dialog-content-in 200ms var(--ease-out);
+}
+
+.dialog-content[data-state="closed"] {
+  animation: dialog-content-out 160ms var(--ease-out);
+}
+
+@keyframes dialog-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dialog-overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes dialog-content-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes dialog-content-out {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.98);
+  }
 }
 
 @media (max-width: 720px) {
