@@ -15,16 +15,16 @@ export function AppRail() {
 
   return (
     <aside
-      className="flex flex-col items-center gap-4 border-r border-[color:var(--line)] bg-[linear-gradient(180deg,rgba(248,250,252,0.94)_0%,rgba(239,244,255,0.9)_100%)] px-2 py-3"
+      className="flex flex-col items-center gap-2 border-r border-[var(--line)] bg-[#f1f3f7] px-1 py-[7px]"
       aria-label="App switcher"
     >
       <div
-        className="grid h-10 w-10 place-items-center rounded-[16px] border border-white/70 bg-[linear-gradient(135deg,#2563eb_0%,#1d4ed8_52%,#1e40af_100%)] text-[0.72rem] font-bold tracking-[0.08em] text-white shadow-[0_18px_30px_rgba(37,99,235,0.32)]"
+        className="grid h-7 w-7 place-items-center rounded-[8px] bg-[#1d4ed8] text-[0.62rem] font-bold text-white"
         title="InboxOS"
       >
         IO
       </div>
-      <nav className="grid gap-2">
+      <nav className="grid gap-1.5">
         {items.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -33,10 +33,10 @@ export function AppRail() {
               key={item.href}
               href={item.href}
               className={[
-                "group grid h-12 w-12 place-items-center rounded-[16px] border text-[color:var(--text-muted)] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-[transform,background-color,border-color,color,box-shadow] duration-150 ease-[var(--ease-out)] active:scale-[0.97]",
+                "grid h-7 w-7 place-items-center rounded-[8px] border border-transparent text-[#475569] transition-colors",
                 active
-                  ? "border-[color:var(--line-emphasis)] bg-white text-[color:var(--accent-strong)] shadow-[0_18px_28px_rgba(15,23,42,0.12)]"
-                  : "border-transparent bg-white/45 hover:border-[color:var(--line-strong)] hover:bg-white hover:text-[color:var(--text)] hover:shadow-[0_12px_24px_rgba(15,23,42,0.08)]",
+                  ? "border-[#d7deea] bg-white text-[#111827]"
+                  : "hover:border-[#d7deea] hover:bg-white hover:text-[#111827]",
               ].join(" ")}
               title={item.label}
               aria-label={item.label}
