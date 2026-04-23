@@ -5,21 +5,19 @@ import * as React from "react";
 import { cn } from "./utils";
 
 const BUTTON_BASE =
-  "inline-flex items-center justify-center gap-2 rounded-[14px] text-[0.82rem] font-semibold tracking-[-0.01em] transition-[transform,background-color,border-color,color,box-shadow,opacity] duration-150 ease-[var(--ease-out)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--surface-0)] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50";
+  "inline-flex items-center justify-center rounded-full text-[0.82rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
 
 const BUTTON_VARIANTS = {
-  default:
-    "border border-[color:var(--accent-strong)] bg-[color:var(--accent-strong)] text-white shadow-[0_16px_32px_rgba(37,99,235,0.24)] hover:border-[color:var(--accent)] hover:bg-[color:var(--accent)]",
-  outline:
-    "border border-[color:var(--line-strong)] bg-[color:var(--surface-1)] text-[color:var(--text)] shadow-[0_10px_24px_rgba(15,23,42,0.08)] hover:border-[color:var(--line-emphasis)] hover:bg-[color:var(--surface-2)]",
+  default: "border border-[#111827] bg-[#111827] text-white hover:bg-black",
+  outline: "border border-[#e5e7eb] bg-white text-[#111827] hover:bg-[#f8fafc]",
   ghost:
-    "border border-transparent bg-transparent text-[color:var(--text-muted)] hover:bg-[color:var(--surface-2)] hover:text-[color:var(--text)]",
+    "border border-transparent bg-transparent text-[#111827] hover:bg-[#f4f4f5]",
 } as const;
 
 const BUTTON_SIZES = {
-  default: "min-h-10 px-4 py-2.5",
-  icon: "h-10 w-10 p-0",
-  pill: "min-h-9 rounded-full px-3.5 py-2",
+  default: "min-h-7 px-3 py-1.5",
+  icon: "h-7 w-7 p-0",
+  pill: "min-h-7 px-2.5 py-1.5",
 } as const;
 
 type ButtonVariant = keyof typeof BUTTON_VARIANTS;

@@ -4,41 +4,31 @@
 
 :root {
   --font-sans:
-    "Avenir Next", "Segoe UI", "Inter", "SF Pro Display", system-ui, sans-serif;
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
   --font-mono:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     "Courier New", monospace;
 
-  --bg: #eef4ff;
-  --surface-0: rgba(255, 255, 255, 0.88);
-  --surface-1: #f8fbff;
-  --surface-2: #edf4ff;
-  --panel: var(--surface-0);
-  --line: rgba(148, 163, 184, 0.24);
-  --line-strong: rgba(148, 163, 184, 0.34);
-  --line-emphasis: rgba(96, 123, 181, 0.5);
-  --text: #0f172a;
-  --text-muted: #526072;
-  --text-subtle: #74839a;
-  --muted: var(--text-muted);
-  --hover: #f4f8ff;
-  --active: #0f172a;
-  --active-text: #f8fbff;
+  --bg: #f4f5f7;
+  --panel: #ffffff;
+  --line: #e5e7eb;
+  --line-strong: #d1d5db;
+  --text: #09090b;
+  --muted: #71717a;
+  --hover: #f4f4f5;
+  --active: #18181b;
+  --active-text: #fafafa;
   --blue: #2563eb;
-  --accent: #3b82f6;
-  --accent-strong: #1d4ed8;
-  --ring: rgba(59, 130, 246, 0.42);
 
   --ok: #166534;
   --ok-bg: #ecfdf3;
   --err: #be123c;
   --err-bg: #fff1f2;
 
-  --radius: 16px;
-  --shadow: 0 24px 48px rgba(15, 23, 42, 0.1);
-  --shadow-soft: 0 36px 80px rgba(15, 23, 42, 0.14);
-  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --radius: 10px;
+  --shadow: 0 8px 20px rgba(2, 6, 23, 0.05);
 }
 
 * {
@@ -59,18 +49,7 @@ body {
   font-size: 13px;
   line-height: 1.45;
   color: var(--text);
-  background:
-    radial-gradient(
-      circle at top left,
-      rgba(59, 130, 246, 0.22),
-      transparent 28%
-    ),
-    radial-gradient(
-      circle at right 18%,
-      rgba(14, 165, 233, 0.16),
-      transparent 24%
-    ),
-    linear-gradient(180deg, #f4f8ff 0%, #edf3ff 44%, #eaf1fb 100%);
+  background: var(--bg);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -86,14 +65,14 @@ a {
   height: 100dvh;
   width: 100%;
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
+  grid-template-columns: 44px minmax(0, 1fr);
 }
 
 .page-shell {
   height: 100%;
   min-height: 0;
   min-width: 0;
-  padding: 18px 18px 18px 14px;
+  padding: 0;
   overflow: hidden;
 }
 
@@ -109,11 +88,9 @@ a {
 
 .panel-surface {
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-radius: 12px;
   background: var(--panel);
   box-shadow: var(--shadow);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
 }
 
 .btn,
@@ -127,23 +104,17 @@ select {
 .btn,
 button {
   border: 1px solid var(--line-strong);
-  border-radius: 14px;
+  border-radius: 9px;
   padding: 7px 10px;
-  background: rgba(255, 255, 255, 0.84);
-  color: var(--text);
-  font-weight: 600;
+  background: #fff;
+  color: #111827;
+  font-weight: 500;
   cursor: pointer;
-  transition:
-    transform 160ms var(--ease-out),
-    background-color 160ms var(--ease-out),
-    border-color 160ms var(--ease-out),
-    box-shadow 160ms var(--ease-out);
 }
 
 .btn:hover,
 button:hover {
-  background: #fff;
-  border-color: var(--line-emphasis);
+  background: #fafafa;
 }
 
 .btn:disabled,
@@ -152,19 +123,14 @@ button:disabled {
   opacity: 0.6;
 }
 
-.btn:active,
-button:active {
-  transform: scale(0.98);
-}
-
 input,
 textarea,
 select {
   width: 100%;
   border: 1px solid var(--line-strong);
-  border-radius: 14px;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.84);
+  border-radius: 9px;
+  padding: 8px 10px;
+  background: #fff;
 }
 
 textarea {
@@ -178,8 +144,8 @@ textarea {
 
 .status {
   margin: 0;
-  padding: 10px 12px;
-  border-radius: 16px;
+  padding: 8px 10px;
+  border-radius: 10px;
   border: 1px solid #bbf7d0;
   color: var(--ok);
   background: var(--ok-bg);
@@ -216,11 +182,9 @@ textarea {
   min-height: 0;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 28px;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: var(--shadow-soft);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--shadow);
 }
 
 .mail-left-nav,
@@ -228,37 +192,31 @@ textarea {
 .mail-read-pane {
   min-height: 0;
   overflow: hidden;
-  background: transparent;
+  background: #fff;
   border: 0;
   border-radius: 0;
   box-shadow: none;
 }
 
 .mail-left-nav {
-  padding: 18px 16px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   overflow: auto;
-  background: linear-gradient(
-    180deg,
-    rgba(248, 251, 255, 0.92),
-    rgba(240, 245, 255, 0.82)
-  );
 }
 
 .mail-account-select {
-  min-height: 48px;
+  min-height: 40px;
   border: 1px solid var(--line-strong);
-  border-radius: 16px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 14px;
-  background: rgba(255, 255, 255, 0.84);
-  font-weight: 600;
-  font-size: 0.86rem;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  gap: 8px;
+  padding: 0 12px;
+  background: #fafafa;
+  font-weight: 500;
+  font-size: 0.84rem;
 }
 
 .account-name {
@@ -290,32 +248,26 @@ textarea {
 }
 
 .folder-row {
-  min-height: 42px;
+  min-height: 38px;
   border: 1px solid transparent;
-  border-radius: 14px;
+  border-radius: 10px;
   background: transparent;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 12px;
-  color: var(--text-muted);
-  box-shadow: none;
+  color: #111827;
 }
 
 .folder-row:hover {
-  background: rgba(255, 255, 255, 0.74);
+  background: #fafafa;
   border-color: var(--line);
 }
 
 .folder-row.active {
-  border-color: rgba(96, 123, 181, 0.28);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.92),
-    rgba(242, 247, 255, 0.94)
-  );
+  border-color: #d6dae1;
+  background: #f5f6f8;
   color: var(--text);
-  box-shadow: 0 12px 22px rgba(15, 23, 42, 0.08);
 }
 
 .folder-row.active:hover {
@@ -353,14 +305,13 @@ textarea {
 }
 
 .list-topbar {
-  min-height: 64px;
+  min-height: 52px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 16px 18px 14px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.66);
 }
 
 .list-heading {
@@ -369,10 +320,9 @@ textarea {
 
 .list-topbar h2 {
   margin: 0;
-  font-size: 1.18rem;
+  font-size: 1.05rem;
   line-height: 1.2;
   font-weight: 600;
-  letter-spacing: -0.04em;
 }
 
 .list-heading p {
@@ -382,15 +332,15 @@ textarea {
 }
 
 .list-tabs {
-  height: 40px;
+  height: 34px;
   display: inline-flex;
   align-items: stretch;
   justify-content: center;
   gap: 0;
   padding: 3px;
   border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  background: rgba(231, 238, 250, 0.8);
+  border-radius: 10px;
+  background: #f7f7f8;
 }
 
 .list-tabs button {
@@ -398,12 +348,12 @@ textarea {
   min-width: 74px;
   height: auto;
   border: 0;
-  border-radius: 999px;
+  border-radius: 8px;
   padding: 0 12px;
   background: transparent;
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: 0.78rem;
+  color: #3f3f46;
+  font-weight: 500;
+  font-size: 0.76rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -413,12 +363,12 @@ textarea {
 
 .list-tabs button.active {
   background: #fff;
-  color: var(--text);
-  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.1);
+  color: #111827;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
 .mail-search-wrap {
-  padding: 14px 18px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -434,21 +384,20 @@ textarea {
 }
 
 .search-field input {
-  min-height: 44px;
-  padding: 9px 14px 9px 40px;
+  min-height: 40px;
+  padding: 9px 12px 9px 36px;
   font-size: 0.86rem;
-  border-radius: 15px;
-  background: rgba(247, 250, 255, 0.86);
+  border-radius: 10px;
 }
 
 .mail-card-list {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 16px 18px 18px;
+  padding: 12px 16px 16px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .mail-list-footer {
@@ -467,43 +416,23 @@ textarea {
 
 .mail-card {
   width: 100%;
-  min-height: 140px;
+  min-height: 132px;
   flex: 0 0 auto;
   border: 1px solid var(--line);
-  border-radius: 20px;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.97),
-    rgba(245, 249, 255, 0.95)
-  );
-  padding: 16px 16px 15px;
+  border-radius: 10px;
+  background: #fff;
+  padding: 14px 16px;
   text-align: left;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
-  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.06);
-  transition:
-    transform 180ms var(--ease-out),
-    border-color 180ms var(--ease-out),
-    box-shadow 180ms var(--ease-out),
-    background-color 180ms var(--ease-out);
-}
-
-.mail-card:hover {
-  transform: translateY(-1px);
-  border-color: var(--line-emphasis);
-  box-shadow: 0 18px 34px rgba(15, 23, 42, 0.08);
+  box-shadow: none;
 }
 
 .mail-card.active {
-  border-color: rgba(59, 130, 246, 0.32);
-  background: linear-gradient(
-    180deg,
-    rgba(239, 246, 255, 0.98),
-    rgba(232, 241, 255, 0.95)
-  );
-  box-shadow: 0 22px 42px rgba(59, 130, 246, 0.14);
+  border-color: #cfd5de;
+  background: #f8fafc;
 }
 
 .mail-card-row {
@@ -559,10 +488,10 @@ textarea {
 }
 
 .label-pill {
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  background: rgba(255, 255, 255, 0.84);
-  padding: 3px 8px;
+  border-radius: 8px;
+  border: 1px solid #e4e4e7;
+  background: #fafafa;
+  padding: 2px 7px;
   font-size: 0.73rem;
   font-weight: 600;
   text-transform: lowercase;
@@ -582,7 +511,7 @@ textarea {
 .mail-pane-resizer {
   position: relative;
   cursor: col-resize;
-  background: transparent;
+  background: #fff;
   touch-action: none;
   z-index: 1;
 }
@@ -609,13 +538,13 @@ body.mail-resizing {
 }
 
 .read-toolbar {
-  min-height: 64px;
+  min-height: 52px;
   border-bottom: 1px solid var(--line);
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
   gap: 6px;
-  padding: 16px 14px 14px;
+  padding: 10px 12px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -626,21 +555,21 @@ body.mail-resizing {
 }
 
 .read-toolbar button {
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   padding: 0;
-  border-radius: 12px;
+  border-radius: 8px;
   display: grid;
   place-items: center;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--text-muted);
+  color: #374151;
   flex: 0 0 auto;
 }
 
 .read-toolbar button:hover {
-  border-color: var(--line-emphasis);
-  background: rgba(255, 255, 255, 0.88);
+  border-color: #d1d5db;
+  background: #f8fafc;
 }
 
 .read-toolbar .spacer {
@@ -670,20 +599,19 @@ body.mail-resizing {
   grid-template-columns: auto 1fr auto;
   gap: 9px;
   align-items: center;
-  padding: 20px 22px 18px;
+  padding: 16px 18px;
   border-bottom: 1px solid var(--line);
 }
 
 .avatar-circle {
-  width: 40px;
-  height: 40px;
+  width: 33px;
+  height: 33px;
   border-radius: 999px;
-  background: linear-gradient(180deg, #dbeafe, #bfdbfe);
+  background: #e5e7eb;
   display: grid;
   place-items: center;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-weight: 700;
-  color: #1d4ed8;
 }
 
 .read-header strong {
@@ -707,7 +635,7 @@ body.mail-resizing {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 20px 22px;
+  padding: 16px 18px;
   white-space: pre-wrap;
   line-height: 1.5;
   font-size: 0.92rem;
@@ -721,13 +649,12 @@ body.mail-resizing {
 }
 
 .message-card {
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 18px;
-  padding: 14px;
-  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #e4e8f0;
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
   display: grid;
   gap: 8px;
-  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.05);
 }
 
 .message-card-header {
@@ -788,10 +715,9 @@ body.mail-resizing {
 }
 
 .reply-panel {
-  padding: 18px 22px 22px;
+  padding: 16px 18px;
   display: grid;
   gap: 9px;
-  background: rgba(248, 251, 255, 0.7);
 }
 
 .compose-mode-row {
@@ -856,75 +782,13 @@ body.mail-resizing {
   top: calc(100% + 6px);
   min-width: 180px;
   border: 1px solid var(--line);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 20px 44px rgba(15, 23, 42, 0.16);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
   padding: 6px;
   display: grid;
   gap: 2px;
   z-index: 10;
-  -webkit-backdrop-filter: blur(18px);
-  backdrop-filter: blur(18px);
-}
-
-.dialog-overlay {
-  -webkit-backdrop-filter: blur(10px);
-}
-
-.dialog-overlay[data-state="open"] {
-  animation: dialog-overlay-in 200ms var(--ease-out);
-}
-
-.dialog-overlay[data-state="closed"] {
-  animation: dialog-overlay-out 160ms var(--ease-out);
-}
-
-.dialog-content[data-state="open"] {
-  animation: dialog-content-in 200ms var(--ease-out);
-}
-
-.dialog-content[data-state="closed"] {
-  animation: dialog-content-out 160ms var(--ease-out);
-}
-
-@keyframes dialog-overlay-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes dialog-overlay-out {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
-}
-
-@keyframes dialog-content-in {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-}
-
-@keyframes dialog-content-out {
-  from {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.98);
-  }
 }
 
 @media (max-width: 720px) {
@@ -989,21 +853,23 @@ body.mail-resizing {
 }
 
 .calendar-shell {
-  padding: 18px;
+  padding: 14px;
+}
+
+.calendar-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
   min-height: 0;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.78);
 }
 
 .calendar-main {
   min-height: 0;
   border-right: 1px solid var(--line);
-  padding: 18px;
+  padding: 12px;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
-  gap: 12px;
+  gap: 8px;
   overflow: hidden;
 }
 
@@ -1016,10 +882,9 @@ body.mail-resizing {
 
 .calendar-title-copy h1 {
   margin: 0;
-  font-size: 1.4rem;
+  font-size: 1.12rem;
   font-weight: 600;
   line-height: 1.2;
-  letter-spacing: -0.05em;
 }
 
 .calendar-title-copy p {
@@ -1033,22 +898,22 @@ body.mail-resizing {
   display: inline-flex;
   align-items: center;
   gap: 1px;
-  padding: 4px;
-  border: 1px solid var(--line);
+  padding: 2px;
+  border: 1px solid #e5e7eb;
   border-radius: 999px;
-  background: rgba(237, 244, 255, 0.82);
+  background: #f3f4f6;
 }
 
 .calendar-view-switcher button {
-  min-width: 58px;
-  height: 32px;
+  min-width: 52px;
+  height: 28px;
   border: 0;
   border-radius: 999px;
   padding: 0 12px;
   background: transparent;
-  color: var(--text-muted);
-  font-size: 0.78rem;
-  font-weight: 600;
+  color: #52525b;
+  font-size: 0.76rem;
+  font-weight: 500;
 }
 
 .calendar-view-switcher button:hover {
@@ -1057,8 +922,8 @@ body.mail-resizing {
 
 .calendar-view-switcher button.active {
   background: #fff;
-  color: var(--text);
-  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.1);
+  color: #111827;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
 .calendar-controls {
@@ -1069,19 +934,19 @@ body.mail-resizing {
 }
 
 .calendar-controls button {
-  width: 36px;
-  height: 36px;
+  width: 30px;
+  height: 30px;
   padding: 0;
-  border-radius: 12px;
+  border-radius: 8px;
   display: grid;
   place-items: center;
 }
 
 .calendar-controls .today-btn {
   width: auto;
-  min-width: 66px;
-  padding: 0 14px;
-  font-size: 0.8rem;
+  min-width: 58px;
+  padding: 0 10px;
+  font-size: 0.78rem;
   font-weight: 600;
 }
 
@@ -1089,11 +954,10 @@ body.mail-resizing {
   min-height: 0;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 22px;
+  border: 1px solid #e4e8f0;
+  border-radius: 12px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+  background: #fff;
 }
 
 .calendar-board.week-view,
@@ -1111,20 +975,20 @@ body.mail-resizing {
 
 .schedule-head {
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.92);
+  background: #fff;
 }
 
 .schedule-corner {
   border-right: 1px solid var(--line);
-  background: rgba(248, 251, 255, 0.9);
+  background: #fafafa;
 }
 
 .schedule-day-head {
-  min-height: 58px;
+  min-height: 52px;
   border: 0;
   border-right: 1px solid var(--line);
   border-radius: 0;
-  background: rgba(255, 255, 255, 0.78);
+  background: #fff;
   display: grid;
   justify-items: center;
   gap: 3px;
@@ -1132,11 +996,11 @@ body.mail-resizing {
 }
 
 .schedule-day-head:hover {
-  background: rgba(248, 251, 255, 0.92);
+  background: #fafafa;
 }
 
 .schedule-day-head.selected {
-  background: rgba(239, 246, 255, 0.96);
+  background: #f8fbff;
 }
 
 .schedule-day-name {
@@ -1157,13 +1021,13 @@ body.mail-resizing {
 }
 
 .schedule-day-head .schedule-day-number.today {
-  background: linear-gradient(180deg, #2563eb, #1d4ed8);
+  background: #ef4444;
   color: #fff;
 }
 
 .schedule-allday {
   border-bottom: 1px solid var(--line);
-  background: rgba(248, 251, 255, 0.82);
+  background: #fcfcfd;
 }
 
 .schedule-allday-label {
@@ -1179,7 +1043,7 @@ body.mail-resizing {
 .schedule-allday-cell {
   min-height: 28px;
   border-right: 1px solid var(--line);
-  background: rgba(248, 251, 255, 0.82);
+  background: #fcfcfd;
 }
 
 .schedule-allday-events {
@@ -1222,12 +1086,12 @@ body.mail-resizing {
   min-height: 0;
   overflow: auto;
   scrollbar-gutter: stable both-edges;
-  background: rgba(255, 255, 255, 0.9);
+  background: #fff;
 }
 
 .schedule-grid {
   position: relative;
-  background: rgba(255, 255, 255, 0.9);
+  background: #fff;
 }
 
 .schedule-time {
@@ -1250,20 +1114,12 @@ body.mail-resizing {
   position: relative;
   z-index: 1;
   margin: 2px 4px;
-  border-radius: 14px;
+  border-radius: 8px;
   border: 1px solid #dbeafe;
   padding: 6px 8px;
   overflow: hidden;
   text-align: left;
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.07);
-  transition:
-    transform 180ms var(--ease-out),
-    box-shadow 180ms var(--ease-out);
-}
-
-.schedule-event:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 16px 30px rgba(15, 23, 42, 0.1);
+  box-shadow: none;
 }
 
 .schedule-event h3 {
@@ -1324,11 +1180,11 @@ body.mail-resizing {
 }
 
 .calendar-day {
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.86);
-  min-height: 86px;
-  padding: 10px;
+  border: 1px solid #e4e8f0;
+  border-radius: 10px;
+  background: #fff;
+  min-height: 74px;
+  padding: 8px;
   text-align: right;
   display: flex;
   flex-direction: column;
@@ -1339,8 +1195,8 @@ body.mail-resizing {
 }
 
 .calendar-day:hover {
-  background: rgba(248, 251, 255, 0.96);
-  border-color: var(--line-emphasis);
+  background: #f8fafc;
+  border-color: #d9dee8;
 }
 
 .calendar-day.outside {
@@ -1349,15 +1205,9 @@ body.mail-resizing {
 }
 
 .calendar-day.selected {
-  border-color: rgba(37, 99, 235, 0.34);
-  box-shadow:
-    inset 0 0 0 1px rgba(37, 99, 235, 0.2),
-    0 18px 30px rgba(59, 130, 246, 0.12);
-  background: linear-gradient(
-    180deg,
-    rgba(239, 246, 255, 0.98),
-    rgba(232, 242, 255, 0.94)
-  );
+  border-color: #3b82f6;
+  box-shadow: inset 0 0 0 1px #3b82f6;
+  background: #eff6ff;
 }
 
 .calendar-day.today .calendar-day-number {
@@ -1384,15 +1234,10 @@ body.mail-resizing {
 
 .calendar-agenda {
   min-height: 0;
-  padding: 18px 18px 20px;
+  padding: 12px;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 14px;
-  background: linear-gradient(
-    180deg,
-    rgba(248, 251, 255, 0.92),
-    rgba(242, 247, 255, 0.84)
-  );
+  gap: 10px;
 }
 
 .agenda-header {
@@ -1416,9 +1261,9 @@ body.mail-resizing {
 }
 
 .agenda-add {
-  width: 36px;
-  height: 36px;
-  border-radius: 12px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   padding: 0;
   display: grid;
   place-items: center;
@@ -1435,21 +1280,21 @@ body.mail-resizing {
 .agenda-empty {
   margin: 0;
   border: 1px dashed #d1d5db;
-  border-radius: 16px;
-  padding: 12px;
+  border-radius: 10px;
+  padding: 10px;
   color: var(--muted);
   font-size: 0.84rem;
 }
 
 .agenda-item {
   position: relative;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.88);
-  padding: 11px 12px 11px 14px;
+  border: 1px solid #e4e8f0;
+  border-radius: 10px;
+  background: #fff;
+  padding: 9px 10px 9px 12px;
   width: 100%;
   text-align: left;
-  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+  box-shadow: none;
 }
 
 .agenda-item::before {
@@ -1582,7 +1427,7 @@ body.mail-resizing {
   }
 
   .app-root {
-    grid-template-columns: 56px minmax(0, 1fr);
+    grid-template-columns: 44px minmax(0, 1fr);
     grid-template-rows: none;
     height: 100vh;
     height: 100dvh;
