@@ -1,6 +1,14 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertCircle,
+  CalendarClock,
+  CheckCircle2,
+  Plus,
+  Search,
+  Sparkles,
+} from "lucide-react";
 
 import { ApiError, api } from "@inboxos/lib/api";
 import { formatDate } from "@inboxos/lib/format";
@@ -147,6 +155,21 @@ export function TasksView() {
     }
   }, [pageIndex, totalPages]);
 
+  const summary = useMemo(() => {
+    const openTasks = tasks.filter((task) => task.status === "open");
+    const completedTasks = tasks.length - openTasks.length;
+    const urgentTasks = openTasks.filter(
+      (task) => derivePriority(task) === "high",
+    ).length;
+
+    return {
+      total: tasks.length,
+      open: openTasks.length,
+      completed: completedTasks,
+      urgent: urgentTasks,
+    };
+  }, [tasks]);
+
   async function createTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!newTitle.trim()) {
@@ -197,70 +220,95 @@ export function TasksView() {
     }
   }
 
-  const surfaceClassName =
-    "rounded-[12px] border border-[var(--line)] bg-white shadow-[var(--shadow)]";
-
   return (
-    <main className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-0">
-      <section
-        className={cn(
-          surfaceClassName,
-          "grid gap-3 rounded-b-none border-b-0 p-4",
-        )}
-      >
-        <div>
-          <h2 className="m-0 text-[1.05rem] font-semibold text-[var(--text)]">
-            Create Task
-          </h2>
-        </div>
-        <form
-          className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_180px_auto]"
-          onSubmit={createTask}
-        >
-          <Input
-            value={newTitle}
-            onChange={(event) => setNewTitle(event.target.value)}
-            placeholder="Task title"
-            aria-label="Task title"
-          />
-          <Input
-            value={newCategory}
-            onChange={(event) => setNewCategory(event.target.value)}
-            placeholder="Category (optional)"
-            aria-label="Task category"
-          />
-          <Input
-            type="date"
-            value={newDueAt}
-            onChange={(event) => setNewDueAt(event.target.value)}
-            aria-label="Due date"
-          />
-          <Button
-            type="submit"
-            disabled={submitting}
-            className="h-10 rounded-md px-4"
-          >
-            {submitting ? "Creating..." : "Create"}
-          </Button>
-        </form>
-      </section>
+    <main className="grid h-full min-h-0 gap-5 overflow-hidden rounded-[28px] border border-[color:var(--line)] bg-[rgba(255,255,255,0.72)] p-4 shadow-[var(--shadow-soft)] backdrop-blur-xl md:grid-cols-[minmax(0,1.5fr)_360px] md:p-5">
+      <section className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] gap-4">
+        <header className="rounded-[24px] border border-white/75 bg-[linear-gradient(135deg,rgba(255,255,255,0.9),rgba(240,246,255,0.88)_52%,rgba(226,237,255,0.94))] p-5 shadow-[0_24px_56px_rgba(15,23,42,0.12)]">
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <span className="inline-flex rounded-full border border-white/80 bg-white/70 px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--accent-strong)]">
+                  Task cockpit
+                </span>
+                <h1 className="mt-3 text-[2rem] font-semibold tracking-[-0.06em] text-[var(--text)]">
+                  Work that actually moves.
+                </h1>
+                <p className="mt-2 max-w-[34rem] text-[0.95rem] leading-7 text-[color:var(--text-muted)]">
+                  Capture follow-ups quickly, filter the noise, and keep urgent
+                  work visible without turning the page into a spreadsheet.
+                </p>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/75 px-4 py-2 text-[0.82rem] font-medium text-[color:var(--text-muted)] shadow-[0_12px_24px_rgba(15,23,42,0.06)]">
+                <Sparkles size={15} className="text-[color:var(--accent)]" />
+                {summary.open} open across {categories.length - 1} categories
+              </div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              {[
+                {
+                  label: "Open",
+                  value: summary.open,
+                  icon: AlertCircle,
+                  tone: "text-[#b45309] bg-[#fff7ed] border-[#fed7aa]",
+                },
+                {
+                  label: "Urgent",
+                  value: summary.urgent,
+                  icon: CalendarClock,
+                  tone: "text-[#be123c] bg-[#fff1f2] border-[#fecdd3]",
+                },
+                {
+                  label: "Completed",
+                  value: summary.completed,
+                  icon: CheckCircle2,
+                  tone: "text-[#166534] bg-[#ecfdf3] border-[#bbf7d0]",
+                },
+              ].map((item) => (
+                <article
+                  key={item.label}
+                  className="rounded-[20px] border border-white/75 bg-white/72 p-4 shadow-[0_16px_34px_rgba(15,23,42,0.08)]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="m-0 text-[0.76rem] font-semibold uppercase tracking-[0.14em] text-[color:var(--text-subtle)]">
+                        {item.label}
+                      </p>
+                      <p className="mt-3 text-[2rem] font-semibold tracking-[-0.06em] text-[var(--text)]">
+                        {item.value}
+                      </p>
+                    </div>
+                    <span
+                      className={cn(
+                        "inline-flex h-11 w-11 items-center justify-center rounded-[14px] border",
+                        item.tone,
+                      )}
+                    >
+                      <item.icon size={18} />
+                    </span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </header>
 
-      <section
-        className={cn(
-          surfaceClassName,
-          "flex min-h-0 flex-col gap-4 rounded-t-none p-4",
-        )}
-      >
-        <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_220px_220px]">
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Filter tasks..."
-            aria-label="Filter tasks"
-          />
+        <section className="grid gap-3 rounded-[22px] border border-[color:var(--line)] bg-[rgba(255,255,255,0.8)] p-4 shadow-[0_16px_34px_rgba(15,23,42,0.08)] md:grid-cols-[minmax(0,1.3fr)_200px_200px]">
+          <label className="relative block">
+            <Search
+              size={16}
+              className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[color:var(--text-subtle)]"
+            />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search titles, categories, or thread IDs"
+              aria-label="Filter tasks"
+              className="pl-11"
+            />
+          </label>
 
           <select
-            className="h-10 rounded-md border border-[var(--line)] bg-white px-3 text-sm text-[var(--text)] outline-none"
+            className="h-11 rounded-[14px] border border-[color:var(--line)] bg-[color:var(--surface-1)] px-4 text-[0.9rem] text-[color:var(--text)] outline-none transition-[border-color,box-shadow,background-color] duration-150 ease-[var(--ease-out)] focus:border-[color:var(--line-emphasis)] focus:bg-white focus:shadow-[0_0_0_4px_rgba(37,99,235,0.12)]"
             value={statusFilter}
             onChange={(event) =>
               setStatusFilter(event.target.value as StatusFilter)
@@ -273,7 +321,7 @@ export function TasksView() {
           </select>
 
           <select
-            className="h-10 rounded-md border border-[var(--line)] bg-white px-3 text-sm text-[var(--text)] outline-none"
+            className="h-11 rounded-[14px] border border-[color:var(--line)] bg-[color:var(--surface-1)] px-4 text-[0.9rem] text-[color:var(--text)] outline-none transition-[border-color,box-shadow,background-color] duration-150 ease-[var(--ease-out)] focus:border-[color:var(--line-emphasis)] focus:bg-white focus:shadow-[0_0_0_4px_rgba(37,99,235,0.12)]"
             value={categoryFilter}
             onChange={(event) => setCategoryFilter(event.target.value)}
             aria-label="Filter by category"
@@ -284,15 +332,15 @@ export function TasksView() {
               </option>
             ))}
           </select>
-        </div>
+        </section>
 
         {error ? (
-          <p className="m-0 rounded-[12px] border border-[#fecdd3] bg-[#fff1f2] px-4 py-3 text-[0.83rem] text-[#be123c]">
+          <p className="m-0 rounded-[16px] border border-[#fecdd3] bg-[#fff1f2] px-4 py-3 text-[0.83rem] text-[#be123c]">
             {error}
           </p>
         ) : null}
         {message ? (
-          <p className="m-0 rounded-[12px] border border-[#bbf7d0] bg-[#ecfdf3] px-4 py-3 text-[0.83rem] text-[#166534]">
+          <p className="m-0 rounded-[16px] border border-[#bbf7d0] bg-[#ecfdf3] px-4 py-3 text-[0.83rem] text-[#166534]">
             {message}
           </p>
         ) : null}
@@ -303,76 +351,65 @@ export function TasksView() {
         ) : null}
 
         {!loading ? (
-          <div className="min-h-0 flex-1 overflow-auto rounded-[14px] border border-[var(--line)]">
-            <table className="w-full min-w-[760px] border-collapse text-left text-[0.86rem]">
-              <thead className="bg-[#fafafa] text-[0.73rem] uppercase tracking-[0.08em] text-[var(--muted)]">
-                <tr>
-                  <th className="px-4 py-3 font-medium">ID</th>
-                  <th className="px-4 py-3 font-medium">Title</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Priority</th>
-                  <th className="px-4 py-3 font-medium">Category</th>
-                  <th className="px-4 py-3 font-medium">Due</th>
-                  <th className="px-4 py-3 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedTasks.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={7}
-                      className="px-4 py-10 text-center text-[0.88rem] text-[var(--muted)]"
+          <div className="min-h-0 overflow-auto rounded-[24px] border border-[color:var(--line)] bg-[rgba(255,255,255,0.82)] p-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
+            {pagedTasks.length === 0 ? (
+              <div className="grid min-h-[320px] place-items-center rounded-[20px] border border-dashed border-[color:var(--line-strong)] bg-[color:var(--surface-1)] px-6 text-center">
+                <div>
+                  <p className="m-0 text-[1rem] font-semibold tracking-[-0.03em] text-[var(--text)]">
+                    No tasks in this view
+                  </p>
+                  <p className="mt-2 text-[0.9rem] leading-6 text-[color:var(--text-muted)]">
+                    Try another filter or create a fresh task from the composer.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                {pagedTasks.map((task) => {
+                  const priority = derivePriority(task);
+                  return (
+                    <article
+                      key={task.id}
+                      className="grid gap-4 rounded-[22px] border border-[color:var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(247,250,255,0.94))] p-4 shadow-[0_14px_28px_rgba(15,23,42,0.07)] transition-[transform,border-color,box-shadow] duration-150 ease-[var(--ease-out)] hover:-translate-y-[1px] hover:border-[color:var(--line-emphasis)] hover:shadow-[0_18px_36px_rgba(15,23,42,0.1)]"
                     >
-                      No tasks in this view.
-                    </td>
-                  </tr>
-                ) : (
-                  pagedTasks.map((task) => {
-                    const priority = derivePriority(task);
-                    return (
-                      <tr
-                        key={task.id}
-                        className="border-t border-[var(--line)] align-middle"
-                      >
-                        <td className="px-4 py-3 font-mono text-[0.75rem] text-[var(--muted)]">
-                          {task.id}
-                        </td>
-                        <td className="px-4 py-3 font-medium text-[var(--text)]">
-                          {task.title}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={cn(
-                              "inline-flex rounded-full px-2.5 py-1 text-[0.73rem] font-medium capitalize",
-                              task.status === "open"
-                                ? "bg-[#eff6ff] text-[#1d4ed8]"
-                                : "bg-[#ecfdf3] text-[#166534]",
-                            )}
-                          >
-                            {task.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={cn(
-                              "inline-flex rounded-full px-2.5 py-1 text-[0.73rem] font-medium capitalize",
-                              priority === "high"
-                                ? "bg-[#fff1f2] text-[#be123c]"
-                                : priority === "medium"
-                                  ? "bg-[#fef3c7] text-[#b45309]"
-                                  : "bg-[#f4f4f5] text-[#52525b]",
-                            )}
-                          >
-                            {priority}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-[var(--text)]">
-                          {task.category ?? "general"}
-                        </td>
-                        <td className="px-4 py-3 text-[var(--text)]">
-                          {formatDate(task.due_at)}
-                        </td>
-                        <td className="px-4 py-3">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div className="min-w-0">
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <span
+                              className={cn(
+                                "inline-flex rounded-full border px-2.5 py-1 text-[0.72rem] font-semibold capitalize",
+                                task.status === "open"
+                                  ? "border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]"
+                                  : "border-[#bbf7d0] bg-[#ecfdf3] text-[#166534]",
+                              )}
+                            >
+                              {task.status}
+                            </span>
+                            <span
+                              className={cn(
+                                "inline-flex rounded-full border px-2.5 py-1 text-[0.72rem] font-semibold capitalize",
+                                priority === "high"
+                                  ? "border-[#fecdd3] bg-[#fff1f2] text-[#be123c]"
+                                  : priority === "medium"
+                                    ? "border-[#fde68a] bg-[#fffbeb] text-[#b45309]"
+                                    : "border-[#e4e4e7] bg-[#fafafa] text-[#52525b]",
+                              )}
+                            >
+                              {priority} priority
+                            </span>
+                          </div>
+                          <h2 className="m-0 text-[1.02rem] font-semibold tracking-[-0.03em] text-[var(--text)]">
+                            {task.title}
+                          </h2>
+                          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-[0.82rem] text-[color:var(--text-muted)]">
+                            <span>Category: {task.category ?? "general"}</span>
+                            <span>Due: {formatDate(task.due_at)}</span>
+                            <span className="font-mono text-[0.76rem] text-[color:var(--text-subtle)]">
+                              {task.id}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
                           {task.status === "open" ? (
                             <Button
                               variant="outline"
@@ -381,20 +418,20 @@ export function TasksView() {
                             >
                               {completingTaskId === task.id
                                 ? "Completing..."
-                                : "Complete"}
+                                : "Mark complete"}
                             </Button>
                           ) : (
-                            <span className="text-[0.82rem] text-[var(--muted)]">
+                            <span className="rounded-full border border-[#bbf7d0] bg-[#ecfdf3] px-3 py-1.5 text-[0.78rem] font-semibold text-[#166534]">
                               Completed
                             </span>
                           )}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
           </div>
         ) : null}
 
@@ -436,6 +473,78 @@ export function TasksView() {
           </div>
         </div>
       </section>
+
+      <aside className="grid min-h-0 grid-rows-[auto_auto] gap-4">
+        <section className="rounded-[24px] border border-[color:var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(243,247,255,0.9))] p-5 shadow-[0_24px_48px_rgba(15,23,42,0.1)]">
+          <div className="mb-4">
+            <span className="inline-flex rounded-full border border-white/80 bg-white/70 px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--accent-strong)]">
+              Quick capture
+            </span>
+            <h2 className="mt-3 text-[1.2rem] font-semibold tracking-[-0.04em] text-[var(--text)]">
+              Add a task without breaking flow
+            </h2>
+            <p className="mt-2 text-[0.88rem] leading-6 text-[color:var(--text-muted)]">
+              Keep the title crisp, use a category only when it helps grouping,
+              and attach a due date when it changes urgency.
+            </p>
+          </div>
+          <form className="grid gap-3" onSubmit={createTask}>
+            <Input
+              value={newTitle}
+              onChange={(event) => setNewTitle(event.target.value)}
+              placeholder="Task title"
+              aria-label="Task title"
+            />
+            <Input
+              value={newCategory}
+              onChange={(event) => setNewCategory(event.target.value)}
+              placeholder="Category"
+              aria-label="Task category"
+            />
+            <Input
+              type="date"
+              value={newDueAt}
+              onChange={(event) => setNewDueAt(event.target.value)}
+              aria-label="Due date"
+            />
+            <Button
+              type="submit"
+              disabled={submitting}
+              className="mt-1 h-11 justify-center rounded-[16px]"
+            >
+              <Plus size={16} />
+              {submitting ? "Creating..." : "Create task"}
+            </Button>
+          </form>
+        </section>
+
+        <section className="rounded-[24px] border border-[color:var(--line)] bg-[rgba(255,255,255,0.82)] p-5 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
+          <h2 className="m-0 text-[1rem] font-semibold tracking-[-0.03em] text-[var(--text)]">
+            View summary
+          </h2>
+          <div className="mt-4 grid gap-3 text-[0.86rem] text-[color:var(--text-muted)]">
+            <div className="rounded-[18px] border border-[color:var(--line)] bg-[color:var(--surface-1)] p-4">
+              <p className="m-0 text-[0.76rem] font-semibold uppercase tracking-[0.14em] text-[color:var(--text-subtle)]">
+                Total tasks
+              </p>
+              <p className="mt-2 text-[1.8rem] font-semibold tracking-[-0.05em] text-[var(--text)]">
+                {summary.total}
+              </p>
+            </div>
+            <div className="rounded-[18px] border border-[color:var(--line)] bg-[color:var(--surface-1)] p-4">
+              <p className="m-0 text-[0.76rem] font-semibold uppercase tracking-[0.14em] text-[color:var(--text-subtle)]">
+                Current view
+              </p>
+              <p className="mt-2 text-[0.95rem] font-semibold text-[var(--text)]">
+                {filteredTasks.length} matching tasks
+              </p>
+              <p className="mt-1 text-[0.82rem] leading-6 text-[color:var(--text-muted)]">
+                Page {Math.min(pageIndex + 1, totalPages)} of {totalPages}
+              </p>
+            </div>
+          </div>
+        </section>
+      </aside>
     </main>
   );
 }
