@@ -339,106 +339,109 @@ export function TasksView() {
           </select>
         </section>
 
-        {error ? (
-          <p className="m-0 rounded-[16px] border border-[#fecdd3] bg-[#fff1f2] px-4 py-3 text-[0.83rem] text-[#be123c]">
-            {error}
-          </p>
-        ) : null}
-        {message ? (
-          <p className="m-0 rounded-[16px] border border-[#bbf7d0] bg-[#ecfdf3] px-4 py-3 text-[0.83rem] text-[#166534]">
-            {message}
-          </p>
-        ) : null}
-        {loading ? (
-          <p className="m-0 text-[0.86rem] text-[var(--muted)]">
-            Loading tasks...
-          </p>
-        ) : null}
-
-        {!loading ? (
-          <div className="min-h-0 overflow-auto rounded-[24px] border border-[color:var(--line)] bg-[rgba(255,255,255,0.82)] p-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
-            {pagedTasks.length === 0 ? (
-              <div className="grid min-h-[320px] place-items-center rounded-[20px] border border-dashed border-[color:var(--line-strong)] bg-[color:var(--surface-1)] px-6 text-center">
-                <div>
-                  <p className="m-0 text-[1rem] font-semibold tracking-[-0.03em] text-[var(--text)]">
-                    No tasks in this view
-                  </p>
-                  <p className="mt-2 text-[0.9rem] leading-6 text-[color:var(--text-muted)]">
-                    Try another filter or create a fresh task from the composer.
-                  </p>
+        <div className="flex min-h-0 flex-col gap-4 overflow-hidden">
+          {error ? (
+            <p className="m-0 rounded-[16px] border border-[#fecdd3] bg-[#fff1f2] px-4 py-3 text-[0.83rem] text-[#be123c]">
+              {error}
+            </p>
+          ) : null}
+          {message ? (
+            <p className="m-0 rounded-[16px] border border-[#bbf7d0] bg-[#ecfdf3] px-4 py-3 text-[0.83rem] text-[#166534]">
+              {message}
+            </p>
+          ) : null}
+          {loading ? (
+            <p className="m-0 text-[0.86rem] text-[var(--muted)]">
+              Loading tasks...
+            </p>
+          ) : (
+            <div className="min-h-0 overflow-auto rounded-[24px] border border-[color:var(--line)] bg-[rgba(255,255,255,0.82)] p-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
+              {pagedTasks.length === 0 ? (
+                <div className="grid min-h-[320px] place-items-center rounded-[20px] border border-dashed border-[color:var(--line-strong)] bg-[color:var(--surface-1)] px-6 text-center">
+                  <div>
+                    <p className="m-0 text-[1rem] font-semibold tracking-[-0.03em] text-[var(--text)]">
+                      No tasks in this view
+                    </p>
+                    <p className="mt-2 text-[0.9rem] leading-6 text-[color:var(--text-muted)]">
+                      Try another filter or create a fresh task from the
+                      composer.
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="grid gap-3">
-                {pagedTasks.map((task) => {
-                  const priority = derivePriority(task);
-                  return (
-                    <article
-                      key={task.id}
-                      className="grid gap-4 rounded-[22px] border border-[color:var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(247,250,255,0.94))] p-4 shadow-[0_14px_28px_rgba(15,23,42,0.07)] transition-[transform,border-color,box-shadow] duration-150 ease-[var(--ease-out)] hover:-translate-y-[1px] hover:border-[color:var(--line-emphasis)] hover:shadow-[0_18px_36px_rgba(15,23,42,0.1)]"
-                    >
-                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                        <div className="min-w-0">
-                          <div className="mb-2 flex flex-wrap items-center gap-2">
-                            <span
-                              className={cn(
-                                "inline-flex rounded-full border px-2.5 py-1 text-[0.72rem] font-semibold capitalize",
-                                task.status === "open"
-                                  ? "border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]"
-                                  : "border-[#bbf7d0] bg-[#ecfdf3] text-[#166534]",
-                              )}
-                            >
-                              {task.status}
-                            </span>
-                            <span
-                              className={cn(
-                                "inline-flex rounded-full border px-2.5 py-1 text-[0.72rem] font-semibold capitalize",
-                                priority === "high"
-                                  ? "border-[#fecdd3] bg-[#fff1f2] text-[#be123c]"
-                                  : priority === "medium"
-                                    ? "border-[#fde68a] bg-[#fffbeb] text-[#b45309]"
-                                    : "border-[#e4e4e7] bg-[#fafafa] text-[#52525b]",
-                              )}
-                            >
-                              {priority} priority
-                            </span>
+              ) : (
+                <div className="grid gap-3">
+                  {pagedTasks.map((task) => {
+                    const priority = derivePriority(task);
+                    return (
+                      <article
+                        key={task.id}
+                        className="grid gap-4 rounded-[22px] border border-[color:var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(247,250,255,0.94))] p-4 shadow-[0_14px_28px_rgba(15,23,42,0.07)] transition-[transform,border-color,box-shadow] duration-150 ease-[var(--ease-out)] hover:-translate-y-[1px] hover:border-[color:var(--line-emphasis)] hover:shadow-[0_18px_36px_rgba(15,23,42,0.1)]"
+                      >
+                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                          <div className="min-w-0">
+                            <div className="mb-2 flex flex-wrap items-center gap-2">
+                              <span
+                                className={cn(
+                                  "inline-flex rounded-full border px-2.5 py-1 text-[0.72rem] font-semibold capitalize",
+                                  task.status === "open"
+                                    ? "border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]"
+                                    : "border-[#bbf7d0] bg-[#ecfdf3] text-[#166534]",
+                                )}
+                              >
+                                {task.status}
+                              </span>
+                              <span
+                                className={cn(
+                                  "inline-flex rounded-full border px-2.5 py-1 text-[0.72rem] font-semibold capitalize",
+                                  priority === "high"
+                                    ? "border-[#fecdd3] bg-[#fff1f2] text-[#be123c]"
+                                    : priority === "medium"
+                                      ? "border-[#fde68a] bg-[#fffbeb] text-[#b45309]"
+                                      : "border-[#e4e4e7] bg-[#fafafa] text-[#52525b]",
+                                )}
+                              >
+                                {priority} priority
+                              </span>
+                            </div>
+                            <h2 className="m-0 text-[1.02rem] font-semibold tracking-[-0.03em] text-[var(--text)]">
+                              {task.title}
+                            </h2>
+                            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-[0.82rem] text-[color:var(--text-muted)]">
+                              <span>
+                                Category: {task.category ?? "general"}
+                              </span>
+                              <span>Due: {formatDate(task.due_at)}</span>
+                              <span className="font-mono text-[0.76rem] text-[color:var(--text-subtle)]">
+                                {task.id}
+                              </span>
+                            </div>
                           </div>
-                          <h2 className="m-0 text-[1.02rem] font-semibold tracking-[-0.03em] text-[var(--text)]">
-                            {task.title}
-                          </h2>
-                          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-[0.82rem] text-[color:var(--text-muted)]">
-                            <span>Category: {task.category ?? "general"}</span>
-                            <span>Due: {formatDate(task.due_at)}</span>
-                            <span className="font-mono text-[0.76rem] text-[color:var(--text-subtle)]">
-                              {task.id}
-                            </span>
+                          <div className="flex items-center gap-2">
+                            {task.status === "open" ? (
+                              <Button
+                                variant="outline"
+                                onClick={() => completeTask(task.id)}
+                                disabled={completingTaskId === task.id}
+                              >
+                                {completingTaskId === task.id
+                                  ? "Completing..."
+                                  : "Mark complete"}
+                              </Button>
+                            ) : (
+                              <span className="rounded-full border border-[#bbf7d0] bg-[#ecfdf3] px-3 py-1.5 text-[0.78rem] font-semibold text-[#166534]">
+                                Completed
+                              </span>
+                            )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {task.status === "open" ? (
-                            <Button
-                              variant="outline"
-                              onClick={() => completeTask(task.id)}
-                              disabled={completingTaskId === task.id}
-                            >
-                              {completingTaskId === task.id
-                                ? "Completing..."
-                                : "Mark complete"}
-                            </Button>
-                          ) : (
-                            <span className="rounded-full border border-[#bbf7d0] bg-[#ecfdf3] px-3 py-1.5 text-[0.78rem] font-semibold text-[#166534]">
-                              Completed
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        ) : null}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="flex flex-col gap-3 text-[0.84rem] text-[var(--muted)] sm:flex-row sm:items-center sm:justify-between">
           <p className="m-0">
